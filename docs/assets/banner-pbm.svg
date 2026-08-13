@@ -1,0 +1,59 @@
+<svg width="1200" height="300" viewBox="0 0 1200 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="band1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0.00" stop-color="#500000"/>
+      <stop offset="0.05" stop-color="#570107"/>
+      <stop offset="0.10" stop-color="#670619"/>
+      <stop offset="0.15" stop-color="#7a0f30"/>
+      <stop offset="0.20" stop-color="#83173d"/>
+      <stop offset="0.25" stop-color="#8c2049"/>
+      <stop offset="0.30" stop-color="#952a56"/>
+      <stop offset="0.35" stop-color="#9c3562"/>
+      <stop offset="0.40" stop-color="#a4406e"/>
+      <stop offset="0.45" stop-color="#ac4c79"/>
+      <stop offset="0.50" stop-color="#b35984"/>
+      <stop offset="0.55" stop-color="#ba6690"/>
+      <stop offset="0.60" stop-color="#c0739b"/>
+      <stop offset="0.65" stop-color="#c782a6"/>
+      <stop offset="0.70" stop-color="#ce90b0"/>
+      <stop offset="0.75" stop-color="#d49fbb"/>
+      <stop offset="0.80" stop-color="#daafc6"/>
+      <stop offset="0.85" stop-color="#e0bfd0"/>
+      <stop offset="0.90" stop-color="#e6d0da"/>
+      <stop offset="0.95" stop-color="#ece1e5"/>
+      <stop offset="1.00" stop-color="#f2f2ef"/>
+    </linearGradient>
+    <linearGradient id="band2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0.00" stop-color="#ffd61a"/>
+      <stop offset="0.05" stop-color="#ccd223"/>
+      <stop offset="0.10" stop-color="#b9cd2d"/>
+      <stop offset="0.15" stop-color="#acc836"/>
+      <stop offset="0.20" stop-color="#a0c33f"/>
+      <stop offset="0.25" stop-color="#96be47"/>
+      <stop offset="0.30" stop-color="#8db950"/>
+      <stop offset="0.35" stop-color="#85b558"/>
+      <stop offset="0.40" stop-color="#7db060"/>
+      <stop offset="0.45" stop-color="#76ab68"/>
+      <stop offset="0.50" stop-color="#6ea670"/>
+      <stop offset="0.55" stop-color="#67a178"/>
+      <stop offset="0.60" stop-color="#609d80"/>
+      <stop offset="0.65" stop-color="#599889"/>
+      <stop offset="0.70" stop-color="#529392"/>
+      <stop offset="0.75" stop-color="#4b8d9b"/>
+      <stop offset="0.80" stop-color="#4388a5"/>
+      <stop offset="0.85" stop-color="#3c81b1"/>
+      <stop offset="0.90" stop-color="#357bbf"/>
+      <stop offset="0.95" stop-color="#2e72d1"/>
+      <stop offset="1.00" stop-color="#2e5eff"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="300" fill="#0c0c0e"/>
+  <text x="60" y="72" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="40" font-weight="700" fill="#ececef" letter-spacing="0.5">Pigment-Based Mixing</text>
+  <text x="60" y="106" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="20" font-weight="400" fill="#9a9aa6" letter-spacing="1">Pigment mixing in sRGB space · Kubelka&#8211;Munk core · O(1), zero LUT</text>
+
+  <text x="60" y="152" font-family="Consolas, monospace" font-size="15" fill="#9a9aa6">deep red + white</text>
+  <rect x="60" y="162" width="1080" height="30" rx="6" fill="url(#band1)"/>
+  <text x="60" y="222" font-family="Consolas, monospace" font-size="15" fill="#9a9aa6">yellow + blue</text>
+  <rect x="60" y="232" width="1080" height="30" rx="6" fill="url(#band2)"/>
+</svg>

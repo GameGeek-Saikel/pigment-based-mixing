@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pigment-Based Mixing · 混色评估套件</title>
+<style>
+:root{
+  --bg:#0c0c0e; --bg-2:#121216; --bg-3:#17171c;
+  --line:#1f1f26; --line-2:#26262e;
+  --text:#ececef; --dim:#9a9aa6; --faint:#6b6b76;
+  --accent:#e0a84c; --accent-ink:#241a08;
+  --ok:#4cc98f; --bad:#e06a5a; --warn:#e0b64c;
+  --r:12px;
+  --font:'Inter','Segoe UI Variable Display','SF Pro Text','PingFang SC','Hiragino Sans GB','Microsoft YaHei UI','Microsoft YaHei',system-ui,sans-serif;
+  --mono:'JetBrains Mono','SF Mono','Cascadia Code',Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px;line-height:1.7}
+.num{font-variant-numeric:tabular-nums}
+
+header{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;
+  height:56px;padding:0 28px;background:rgba(12,12,14,.86);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line)}
+.brand{font-size:13px;font-weight:650;letter-spacing:.02em}
+.brand em{font-style:normal;color:var(--faint);font-weight:500}
+.nav{display:flex;gap:18px;align-items:baseline}
+.nav a{color:var(--dim);text-decoration:none;font-size:12px;transition:color .15s}
+.nav a:hover{color:var(--text)}
+.nav .here{color:var(--accent)}
+
+main{max-width:1180px;margin:0 auto;padding:36px 28px 60px;display:flex;flex-direction:column;gap:40px}
+.sec-title{font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin-bottom:14px}
+.panel{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r);padding:20px}
+
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:880px){.cards{grid-template-columns:1fr}}
+.card{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.card h4{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-bottom:7px}
+.card p{font-size:12px;color:var(--dim);line-height:1.8}
+.card .big{font-size:22px;font-weight:700;color:var(--accent);margin:4px 0 2px}
+.card .sub{font-size:11px;color:var(--faint)}
+.chip{display:inline-block;font-size:11px;font-weight:600;border-radius:5px;padding:1px 8px;margin-left:6px;vertical-align:1px}
+.chip.ok{color:var(--ok);border:1px solid var(--ok)}
+.chip.bad{color:var(--bad);border:1px solid var(--bad)}
+
+/* config */
+.cfg-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0}
+.cfg-row .lbl{font-size:12px;color:var(--dim)}
+.cfg-row input[type="number"],.cfg-row input[type="text"]{width:110px;background:var(--bg-3);border:1px solid var(--line-2);
+  border-radius:6px;color:var(--text);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none}
+.cfg-row input:focus{border-color:var(--accent)}
+.cfg-row .hint{font-size:11px;color:var(--faint)}
+.btn{background:var(--accent);color:var(--accent-ink);border:none;border-radius:8px;font-size:13px;font-weight:650;
+  padding:8px 22px;cursor:pointer;transition:transform .12s,filter .12s}
+.btn:hover{transform:translateY(-1px);filter:brightness(1.06)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn.ghost{background:none;color:var(--dim);border:1px solid var(--line-2)}
+.btn.ghost:hover{color:var(--text);border-color:var(--dim)}
+
+/* models */
+.models{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+.model-chip{display:flex;align-items:center;gap:8px;background:var(--bg-3);border:1px solid var(--line-2);
+  border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;user-select:none;transition:border-color .15s}
+.model-chip:hover{border-color:var(--dim)}
+.model-chip input{accent-color:var(--accent);cursor:pointer}
+.model-chip .note{color:var(--faint);font-size:11px}
+
+/* tables */
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+th{color:var(--faint);font-weight:600;font-size:11px;letter-spacing:.04em;text-align:right}
+td:first-child,th:first-child{text-align:left}
+th.sub{color:var(--dim)}
+td.name{font-weight:550;color:var(--text)}
+td.mono,td.small{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.pass-y{color:var(--ok);font-weight:700}
+.pass-n{color:var(--bad);font-weight:700}
+td.de00{color:var(--faint);font-size:10.5px}
+
+/* status line */
+.status{margin-top:12px;font-size:12px;color:var(--dim)}
+.status .err{color:var(--bad)}
+.status .ok{color:var(--ok)}
+
+/* worst pairs */
+.worst-item{display:flex;align-items:center;gap:12px;padding:8px 2px;border-bottom:1px solid var(--line);font-size:12px}
+.worst-item:last-child{border-bottom:none}
+.sw{width:30px;height:30px;border-radius:7px;border:1px solid var(--line-2);flex:none}
+.worst-item .meta{flex:1;color:var(--dim);font-size:11.5px}
+.worst-item .meta b{color:var(--text);font-weight:600}
+.worst-item .de{font-family:var(--mono);font-size:11.5px;color:var(--faint);text-align:right}
+
+footer{margin-top:6px;padding-top:20px;border-top:1px solid var(--line);display:flex;justify-content:space-between;
+  font-size:11px;color:var(--faint)}
+footer a{color:var(--faint);text-decoration:none}
+footer a:hover{color:var(--text)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">Pigment-Based Mixing<em> / 混色评估</em></div>
+  <nav class="nav">
+    <a href="color-mixing-demo.html">演示</a>
+    <a href="../docs/color-mixing-algorithm.md">算法文档</a>
+    <span class="here">评估</span>
+  </nav>
+</header>
+
+<main>
+  <!-- 参考系与验收 -->
+  <section class="cards">
+    <div class="card">
+      <h4>参考系</h4>
+      <p>Mixbox 2.0 <code>lerpFloat</code>（sRGB 显示值空间，float 路径规避 8-bit 量化）。离线时自动降级为不可用。</p>
+    </div>
+    <div class="card">
+      <h4>验收阈值（ΔE00）</h4>
+      <div class="big num">mean &lt; 5 · max ≤ 15</div>
+      <div class="sub">验收以 T5 深色+白 专项为准；主三集 mean 同标准，max 受互补混色族硬顶限制（如实记录）</div>
+    </div>
+    <div class="card">
+      <h4>CIEDE2000 复刻</h4>
+      <p>Sharma/Wu/Dalal 2005 的 34 组参考色差对，实现偏差须 &lt; 0.001 方视为复刻成功。</p>
+      <p class="status" id="ciedeStatus">加载中…</p>
+    </div>
+  </section>
+
+  <!-- 配置 -->
+  <section class="panel">
+    <div class="sec-title">配置与运行</div>
+    <div class="cfg-row">
+      <span class="lbl">随机 seed</span>
+      <input type="number" id="seed" value="20260808">
+      <span class="hint">T3 随机对集固定 seed，结果可复现</span>
+    </div>
+    <div class="cfg-row">
+      <span class="lbl">随机对数</span>
+      <input type="number" id="randN" value="2000" min="10" max="20000" step="10">
+      <span class="hint">T3：均匀采样 sRGB 浮点 × α∈[0,1] 连续均匀</span>
+    </div>
+    <div class="cfg-row">
+      <span class="lbl">被测模型</span>
+      <div class="models" id="modelList"></div>
+    </div>
+    <div class="cfg-row">
+      <button class="btn" id="runBtn">运行全套件</button>
+      <span class="hint" id="refState">参考系：—</span>
+    </div>
+    <div class="status" id="runStatus"></div>
+  </section>
+
+  <!-- 汇总 -->
+  <section>
+    <div class="sec-title">汇总 · ΔE00 vs Mixbox（T1 调色板 / T2 压力 / T3 随机 / T5 深色+白；ΔE76 仅记录）</div>
+    <div class="panel tbl-wrap">
+      <table id="summaryTbl"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- 分类细分 -->
+  <section>
+    <div class="sec-title">分类细分 · ΔE00 均值（互补 / 错配 / 白黑 / 相似 / 调色板 / 随机 / 深色+白）</div>
+    <div class="panel tbl-wrap">
+      <table id="catTbl"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- T4 恒等 -->
+  <section>
+    <div class="sec-title">T4 恒等与边界（α=0/1 应返回原色，通道容差 0.01）</div>
+    <div class="panel tbl-wrap">
+      <table id="t4Tbl"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- 最差明细 -->
+  <section>
+    <div class="sec-title">最差 5 对明细（每模型，ΔE00 降序）</div>
+    <div class="panel" id="worstBox"><div class="status">运行后显示</div></div>
+  </section>
+
+  <!-- 导出 -->
+  <section class="panel">
+    <div class="sec-title">导出报告</div>
+    <div class="cfg-row">
+      <button class="btn ghost" id="copyBtn">复制 JSON</button>
+      <button class="btn ghost" id="dlBtn">下载 JSON</button>
+      <span class="hint" id="exportState"></span>
+    </div>
+  </section>
+
+  <footer>
+    <span>Pigment-Based Mixing · 混色评估套件</span>
+    <a href="../docs/color-mixing-algorithm.md#附录-a-评估套件规范">评估方法学 →</a>
+  </footer>
+</main>
+
+<!-- Mixbox 参考库（CC BY-NC 4.0，© Secret Weapons 2022；官方 CDN 加载，仅供研究对照、不进入产品代码） -->
+<script src="https://scrtwpns.com/mixbox.js"></script>
+<!-- PBM 算法库 + 评估套件（javascript/color-mixing.js + demo/color-mixing-evaluation.js） -->
+    <script src="../javascript/color-mixing.js"></script>
+    <script src="color-mixing-evaluation.js"></script>
+</body>
+</html>

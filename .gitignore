@@ -1,0 +1,9 @@
+# 构建产物 / 临时文件
+*.class
+*.obj
+*.exe
+*.o
+*.pyc
+__pycache__/
+tools/.build/
+node_modules/

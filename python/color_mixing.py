@@ -1,0 +1,294 @@
+# -*- coding: utf-8 -*-
+"""color_mixing.py — PBM 颜料基混色算法（Python 实现，仅混色公式）
+
+只含论文 §3 两阶段混色公式（K–M 核心 + 修复层）；不含任何验证/测试
+代码（一致性测试 CLI 在 tools/cli/，评测在 tools/）。
+
+与 javascript/color-mixing.js 的 mixPbm 数值等价（IEEE 754 double，
+运算顺序一致；libm 差异 ΔE00 < 1e-6 量级）。参数（PBM_A/PBM_M/
+PBM_BETA/PBM_EPS/PBM_PW_* 等）与 JS 单一事实源逐位一致。
+
+优化（对齐 JS 优化参考实现）：
+  - M₃/M₃⁻¹ 手写展开（PBM_MI 模块级预计算一次）
+  - φ 端点压缩快速路径内联（phi_low）
+  - 幂律目标展开（无 pre 对象、无逐通道闭包；q 表达式直接展开）
+  - K/S 叠加 kc 外提为带参模块函数（去闭包开销）
+  - γ 谐波零贡献提前退出（cSat/hA/gSup 门）
+  - 倍角公式降三角次数（8→4）；通道极值/色相 hueOf 手写展开
+  - 热路径常量局部化（PBM_A 通道系数）
+
+用法（库）：
+    import color_mixing as cm
+    out = cm.mix_pbm([0.988, 0.827, 0.0], [0.0, 0.129, 0.522], 0.5)
+
+许可证：MIT License（仓库 LICENSE）。
+"""
+
+import math
+
+# ---- 参数（单一事实源：javascript/color-mixing.js，勿单独修改） ----
+PBM_A = [math.sqrt(2.0), 1.0, 1.0 / (2.0 * math.sqrt(2.0))]
+PBM_M = [0.74523981, 0.30403013, -0.04926994, 0.0, 0.74093256, 0.25906744, 0.0, 0.0, 1.0]
+PBM_BETA = [-0.69372345, -0.48397409, -0.24977842]
+PBM_EPS = 0.00157634
+PBM_PW_RES = [0.0, -0.25693718, -0.25693718]
+PBM_PW_CPL = 0.43251363
+PBM_PW_KC = 4.86795929
+PBM_PW_RD = [-0.28030789, -0.31011215, 0.33194666, -1.19791733, -0.45218018, 1.71390058]
+PBM_PW_RTH = 0.21929798
+PBM_PW_BD_R = 0.40713961
+PBM_PW_BD_G = [-0.08390816, 0.76274462]
+PBM_PW_GD_R = [-0.2367074, 0.72220875]
+PBM_PW_GD_B = [-0.30067864, 1.03098891]
+PBM_EW = 0.08
+PBM_PHI_P = 2.31336
+PBM_PHI_W = PBM_EW
+
+
+def _mat3_inv(m):
+    a, b, c, d, e, f, g, h, i = m
+    A = e * i - f * h
+    B = -(d * i - f * g)
+    C = d * h - e * g
+    det = a * A + b * B + c * C
+    return [
+        A / det, -(b * i - c * h) / det, (b * f - c * e) / det,
+        B / det, (a * i - c * g) / det, -(a * f - c * d) / det,
+        C / det, -(a * h - b * g) / det, (a * e - b * d) / det,
+    ]
+
+
+PBM_MI = _mat3_inv(PBM_M)
+
+
+def _clamp(v, lo, hi):
+    return lo if v < lo else (hi if v > hi else v)
+
+
+def _c01(x):
+    return 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
+
+
+def _ck(x):
+    t = x * 12.584001
+    return 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+
+
+def _c8(x):
+    t = x * 8.0
+    return 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+
+
+def _ssT(x, lo, hi):
+    t = _c01((x - lo) / (hi - lo))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _kc(x1, x2, ia, aa):
+    """K/S 浓度叠加（core 内联，闭包外提为带参函数避免逐调用闭包开销）"""
+    v1 = 0.0 if x1 < 0.0 else (1.0 if x1 > 1.0 else x1)
+    v2 = 0.0 if x2 < 0.0 else (1.0 if x2 > 1.0 else x2)
+    K1 = 0.5 * (1.0 - v1) * (1.0 - v1)
+    K2 = 0.5 * (1.0 - v2) * (1.0 - v2)
+    S1 = v1 if v1 > PBM_EPS else PBM_EPS
+    S2 = v2 if v2 > PBM_EPS else PBM_EPS
+    kk = (K1 * ia + K2 * aa) / (S1 * ia + S2 * aa)
+    if kk < 1e-6:
+        return 1e-6
+    if kk > 1e4:
+        return 1e4
+    return kk
+
+
+def phi_low(x):
+    if x >= PBM_PHI_W:
+        return x
+    u = _clamp(x / PBM_PHI_W, 0.0, 1.0)
+    ss0 = u * u * (3.0 - 2.0 * u)
+    return (1.0 - ss0) * math.pow(x, PBM_PHI_P) + ss0 * x
+
+
+def mix_pbm_core(base, tint, a):
+    if a <= 0.0:
+        return base[:]
+    if a >= 1.0:
+        return tint[:]
+    if a < 0.08:
+        a = phi_low(a)
+    elif a > 0.92:
+        a = 1.0 - phi_low(1.0 - a)
+    b0, b1, b2 = base
+    t0, t1, t2 = tint
+    vb0 = 0.74523981 * b0 + 0.30403013 * b1 - 0.04926994 * b2
+    vb1 = 0.74093256 * b1 + 0.25906744 * b2
+    vb2 = b2
+    vt0 = 0.74523981 * t0 + 0.30403013 * t1 - 0.04926994 * t2
+    vt1 = 0.74093256 * t1 + 0.25906744 * t2
+    vt2 = t2
+    ia = 1.0 - a
+
+    k0 = _kc(vb0, vt0, ia, a)
+    k1 = _kc(vb1, vt1, ia, a)
+    k2 = _kc(vb2, vt2, ia, a)
+    r0 = math.sqrt(k0)
+    r1 = math.sqrt(k1)
+    r2 = math.sqrt(k2)
+    s0 = r0 / (1.0 + r0)
+    s1 = r1 / (1.0 + r1)
+    s2 = r2 / (1.0 + r2)
+    w0 = math.sqrt(_clamp(k0 * (1.0 + PBM_BETA[0] * s1 * s2), 1e-6, 1e4))
+    w1 = math.sqrt(_clamp(k1 * (1.0 + PBM_BETA[1] * s0 * s2), 1e-6, 1e4))
+    w2 = math.sqrt(_clamp(k2 * (1.0 + PBM_BETA[2] * s0 * s1), 1e-6, 1e4))
+    a0, a1, a2 = PBM_A[0], PBM_A[1], PBM_A[2]  # 热路径常量局部化
+    o0 = 1.0 / (1.0 + w0 * (a0 + w0 * (a1 + w0 * a2)))
+    o1 = 1.0 / (1.0 + w1 * (a0 + w1 * (a1 + w1 * a2)))
+    o2 = 1.0 / (1.0 + w2 * (a0 + w2 * (a1 + w2 * a2)))
+    return [
+        _clamp(PBM_MI[0] * o0 + PBM_MI[1] * o1 + PBM_MI[2] * o2, 0.0, 1.0),
+        _clamp(PBM_MI[3] * o0 + PBM_MI[4] * o1 + PBM_MI[5] * o2, 0.0, 1.0),
+        _clamp(PBM_MI[6] * o0 + PBM_MI[7] * o1 + PBM_MI[8] * o2, 0.0, 1.0),
+    ]
+
+
+def pbm_pw_target(pig, u, a):
+    if a < PBM_PHI_W:
+        uu = a / PBM_PHI_W
+        ss0 = uu * uu * (3.0 - 2.0 * uu)
+        a = (1.0 - ss0) * math.pow(a, PBM_PHI_P) + ss0 * a
+    r, g, b = pig
+    u0, u1, u2 = u
+    gR = 0.5 * _c8(r - g) + 0.5 * _c8(r - b)
+    gG = 0.5 * _c8(g - r) + 0.5 * _c8(g - b)
+    gB = 0.5 * _c8(b - r) + 0.5 * _c8(b - g)
+    gRed = gR * _c8(r - PBM_PW_RTH)
+    gSum = gR + gG + gB
+    gInv = 1.0 / gSum if gSum > 1e-6 else 0.0
+
+    def resE(v):
+        t = v * 25.0
+        if t < 1.0:
+            return 0.9432 - 0.6219 * t
+        if t < 3.0:
+            return 0.4580 - 0.1494 * t
+        return 0.0
+
+    s1R = _ck(r - 0.04633146)
+    s2R = _ck(r - 0.24928142)
+    pBvR = 0.88024633 + (0.33545176 - 0.88024633) * s1R + (0.19217412 - 0.33545176) * s2R
+    pGvR = 0.57387051 + (0.596528 - 0.57387051) * s1R + (0.19217412 - 0.596528) * s2R
+    q0 = (1.0 + pBvR + pGvR) / 3.0 if gSum <= 1e-6 else (gB * pBvR + gG * pGvR + gR) * gInv
+    q0 += PBM_PW_CPL * _c01(max(g, b) * PBM_PW_KC)
+    q0 += gRed * (PBM_PW_RD[0] + PBM_PW_RD[1] * r) + gB * PBM_PW_BD_R + gG * (PBM_PW_GD_R[0] + PBM_PW_GD_R[1] * r)
+
+    s1G = _ck(g - 0.04633146)
+    s2G = _ck(g - 0.24928142)
+    pBvG = 0.88024633 + (0.33545176 - 0.88024633) * s1G + (0.19217412 - 0.33545176) * s2G
+    pGvG = 0.57387051 + (0.596528 - 0.57387051) * s1G + (0.19217412 - 0.596528) * s2G
+    q1 = (1.0 + pBvG + pGvG) / 3.0 if gSum <= 1e-6 else (gB * pBvG + gG * pGvG + gR) * gInv
+    q1 += PBM_PW_RES[1] * resE(g)
+    q1 += PBM_PW_CPL * _c01(max(r, b) * PBM_PW_KC)
+    q1 += gRed * (PBM_PW_RD[2] + PBM_PW_RD[3] * g) + gB * (PBM_PW_BD_G[0] + PBM_PW_BD_G[1] * g)
+
+    s1B = _ck(b - 0.04633146)
+    s2B = _ck(b - 0.24928142)
+    pBvB = 0.88024633 + (0.33545176 - 0.88024633) * s1B + (0.19217412 - 0.33545176) * s2B
+    pGvB = 0.57387051 + (0.596528 - 0.57387051) * s1B + (0.19217412 - 0.596528) * s2B
+    q2 = (1.0 + pBvB + pGvB) / 3.0 if gSum <= 1e-6 else (gB * pBvB + gG * pGvB + gR) * gInv
+    q2 += PBM_PW_RES[2] * resE(b)
+    q2 += PBM_PW_CPL * _c01(max(r, g) * PBM_PW_KC)
+    q2 += gRed * (PBM_PW_RD[4] + PBM_PW_RD[5] * g) + gG * (PBM_PW_GD_B[0] + PBM_PW_GD_B[1] * g)
+
+    return [r + (u0 - r) * math.pow(a, q0), g + (u1 - g) * math.pow(a, q1), b + (u2 - b) * math.pow(a, q2)]
+
+
+def pbm_repair_delta(pig, u, a_eff, C):
+    r, g, b = pig
+    u0, u1, u2 = u
+    M = max(r, g, b)
+    mn = min(r, g, b)
+    maxd = M - mn
+    wu = min(u0, u1, u2)
+    w = max(mn, wu)
+    gate = _ck(w - 0.3706311) * _ck(M) * _ck(maxd - 0.06556298)
+    d0 = 0.0
+    d1 = 0.0
+    d2 = 0.0
+    if gate > 1e-6:
+        t = pbm_pw_target(pig, u, a_eff)
+        d0 = gate * (t[0] - C[0])
+        d1 = gate * (t[1] - C[1])
+        d2 = gate * (t[2] - C[2])
+    gSup = 1.0 - gate
+    hA = _c01(14.0 * (0.845 - a_eff))
+    um = max(u0, u1, u2)
+    cSat = _ssT(M - mn, 0.02, 0.15) * _ssT(um - wu, 0.08, 0.30)
+    if gSup > 1e-9 and hA > 1e-9 and cSat > 1e-9:
+        gm = 4.0 * a_eff * (1.0 - a_eff) * cSat * gSup * hA
+
+        def hueOf(v0, v1, v2):
+            mx = v0 if (v0 > v1 and v0 > v2) else (v1 if v1 > v2 else v2)
+            mnn = v0 if (v0 < v1 and v0 < v2) else (v1 if v1 < v2 else v2)
+            # 注意：与 JS 嵌套三元 r>g?(r>b?r:b):(g>b?g:b) 语义一致——
+            # 等值时的分支选择（== 比较）影响结果，不可用内置 max/min 替代。
+            if mx - mnn < 1e-9:
+                return 0.0
+            if mx == v0:
+                h = 60.0 * ((v1 - v2) / (mx - mnn))
+            elif mx == v1:
+                h = 60.0 * (2.0 + (v2 - v0) / (mx - mnn))
+            else:
+                h = 60.0 * (4.0 + (v0 - v1) / (mx - mnn))
+            return h + 360.0 if h < 0.0 else h
+
+        hp = hueOf(r, g, b)
+        hu = hueOf(u0, u1, u2)
+        A = math.pi / 180.0
+        shp = math.sin(A * hp)
+        chp = math.cos(A * hp)
+        shu = math.sin(A * hu)
+        chu = math.cos(A * hu)
+        s2hp = 2.0 * shp * chp
+        c2hp = 2.0 * chp * chp - 1.0
+        s3hp = shp * (3.0 - 4.0 * shp * shp)
+        c3hp = chp * (4.0 * chp * chp - 3.0)
+        s2hu = 2.0 * shu * chu
+        c2hu = 2.0 * chu * chu - 1.0
+        logu = math.log(u0 + 0.01)
+        s1hu_pm = shu * _c01((M - 0.30) * 12.584)
+        gRp = 0.5 * _c8(r - g) + 0.5 * _c8(r - b)
+        gBp = 0.5 * _c8(b - r) + 0.5 * _c8(b - g)
+        gRu = 0.5 * _c8(u0 - u1) + 0.5 * _c8(u0 - u2)
+        wUcP = (u0 - u2) * (b - r)
+        dcAbs = u0 - r if u0 > r else r - u0
+        d0 += (-0.07339164 + -0.085953 * gBp + 0.1295769 * wu + -0.04714988 * s2hp + 0.12208017 * M + -0.00677685 * logu + -0.03406281 * shu + 0.01174257 * s3hp + 0.02505266 * s1hu_pm + 0.0360914 * gRp + -0.04872395 * r) * gm
+        d1 += (-0.04704706 + 0.10921572 * wu + -0.06204143 * gRp + -0.02021518 * c2hp + 0.05506322 * um + 0.00698984 * s2hu) * gm
+        d2 += (-0.04887766 + 0.09651812 * wu + -0.07000325 * mn + 0.02119207 * c3hp + 0.08138486 * um + -0.06336064 * M + 0.01773538 * c2hu + -0.09771287 * wUcP + 0.0736705 * dcAbs + -0.03704948 * gRu) * gm
+    return [d0, d1, d2]
+
+
+def pbm_repair_layer(base, tint, a, C):
+    mB = max(base)
+    mT = max(tint)
+    te = _clamp((mT - mB + PBM_EW) / (2.0 * PBM_EW), 0.0, 1.0)
+    if te <= 0.0:
+        return pbm_repair_delta(tint, base, 1.0 - a, C)
+    if te >= 1.0:
+        return pbm_repair_delta(base, tint, a, C)
+    lam = te * te * (3.0 - 2.0 * te)
+    dA = pbm_repair_delta(base, tint, a, C)
+    dB = pbm_repair_delta(tint, base, 1.0 - a, C)
+    return [lam * dA[0] + (1.0 - lam) * dB[0],
+            lam * dA[1] + (1.0 - lam) * dB[1],
+            lam * dA[2] + (1.0 - lam) * dB[2]]
+
+
+def mix_pbm(base, tint, a):
+    if a <= 0.0:
+        return base[:]
+    if a >= 1.0:
+        return tint[:]
+    C = mix_pbm_core(base, tint, a)
+    d = pbm_repair_layer(base, tint, a, C)
+    return [_clamp(C[0] + d[0], 0.0, 1.0),
+            _clamp(C[1] + d[1], 0.0, 1.0),
+            _clamp(C[2] + d[2], 0.0, 1.0)]
