@@ -1,13 +1,13 @@
 /* =====================================================================
- * color-mixing-evaluation.js — 评估套件 + 页面 UI（评估页专用）
+ * color-mixing-evaluation.js — 评估套件 + 页面 UI
  *
- * PBM 混色公式来自 ../javascript/color-mixing.js（window.ColorMixing.mixPbm）；
- * 本文件只含评估所需的非算法部分：色度度量（CIELAB / ΔE76 / CIEDE2000、
- * Sharma 34 对复刻验证）、参考模型（RGB 插值 / Kubelka–Munk 双参数）、T1–T5 测试集、__Suite 导出与评估页 UI。
- * （提取自原内联脚本，勿手改）
+ * 算法来自 ../javascript/color-mixing.js（window.ColorMixing.mixPbm）。
+ * 本文件只包含评估所需的部分：色度度量（CIELAB / ΔE76 / CIEDE2000，
+ * 含 Sharma 34 对复刻校验）、对照模型（RGB 插值 / 显示值 Kubelka–Munk）、
+ * T1–T5E 测试集、__Suite 导出，以及评估页 UI。
  *
  * 浏览器：<script src="../javascript/color-mixing.js"></script>
- *          <script src="color-mixing-evaluation.js"></script>
+ *         <script src="color-mixing-evaluation.js"></script>
  * Node：  tools/suite-loader.js 无头加载（vm）。
  * =================================================================== */
 'use strict';
@@ -230,9 +230,9 @@ function buildT5(){
 /* T5E 双侧尾端专项（φ 动态进度的监督集）：
  * 深重侧 α∈{0.001..0.1}：T5 原 α 网格从 0.1 起步，深重尾端完全无覆盖（φ 动态进度前
  *   #FFFFFF+#0D1B44 α=0.99 实测 ΔE 2.6——"99% 更像 99.9%"）；色度深色走修复分支 a_eff→0，
- *   近中性深色（maxd<0.0656 盲区，gate=0）走纯核心。
+ *   近中性深色（maxd<0.0648 盲区，gate=0）走纯核心。
  * 浅重侧 α∈{0.92..0.99}×近中性深色：盲区浅重侧（#F2F2EF+#000B2E α=0.05 实测 ΔE 6.5）。
- * 近中性深色量化定义：max∈[0.04,0.10]、maxd∈[0.02,0.06]（深白门 maxd≥0.0656 之下）。 */
+ * 近中性深色量化定义：max∈[0.04,0.10]、maxd∈[0.02,0.06]（深白门 maxd≥0.0648 之下）。 */
 const T5E_DEEP_ALPHAS = [0.001, 0.005, 0.01, 0.02, 0.05, 0.1];
 const T5E_LIGHT_ALPHAS = [0.92, 0.95, 0.98, 0.99];
 const T5E_SEED = 20260816;
@@ -353,192 +353,355 @@ if (typeof window !== 'undefined'){
   window.__Suite = { validateDeltaE2000, deltaE2000, de76, buildReport, runT4, evaluateSet, MODELS, SHARMA, THRESHOLDS, buildT5, buildT5Random, buildT5E };
 }
 
+
 /* =====================================================================
- * UI（仅浏览器）
+ * 评估页 UI（仅浏览器；默认英文，可切换中文）
  * =================================================================== */
 if (typeof document !== 'undefined'){
-const $ = id => document.getElementById(id);
-const fmt = v => (typeof v === 'number') ? v.toFixed(3) : String(v);
-const hex = rgb => '#' + rgb.map(v => Math.round(clamp(v,0,1)*255).toString(16).padStart(2,'0')).join('').toUpperCase();
-const rgbChip = (el, c) => { el.style.background = hex(c); el.textContent = ''; };
+  const $ = id => document.getElementById(id);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const hexOf = rgb => '#' + rgb.map(v => Math.round(clamp(v,0,1)*255).toString(16).padStart(2,'0')).join('').toUpperCase();
+  const fmt = (v, d) => Number(v).toFixed(d);
 
-const MIXBOX_OK = !!mixboxRef;
-$('refState').textContent = MIXBOX_OK ? '参考系：Mixbox 2.0 可用' : '参考系：mixbox.js 未加载（需网络），无法运行';
-
-/* CIEDE2000 验证（加载即自动运行） */
-(function(){
-  const r = validateDeltaE2000();
-  const el = $('ciedeStatus');
-  el.innerHTML = r.pass
-    ? '34 组全部通过 <span class="chip ok">PASS</span> · 最大偏差 <span class="num">' + r.maxAbsDev.toExponential(2) + '</span>'
-    : '34 组未通过 <span class="chip bad">FAIL</span> · 最大偏差 <span class="num">' + r.maxAbsDev.toExponential(2) + '</span>（第 ' + (r.worst.i+1) + ' 对）';
-  el.className = 'status ' + (r.pass ? 'ok' : 'err');
-})();
-
-/* 模型选择 */
-const enabled = {};
-MODELS.forEach((m, i) => {
-  enabled[i] = true;
-  const chip = document.createElement('label');
-  chip.className = 'model-chip';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox'; cb.checked = true;
-  cb.onchange = () => { enabled[i] = cb.checked; };
-  chip.appendChild(cb);
-  chip.appendChild(document.createTextNode(m.name));
-  const note = document.createElement('span');
-  note.className = 'note'; note.textContent = m.note;
-  chip.appendChild(note);
-  $('modelList').appendChild(chip);
-});
-
-/* 运行 */
-let lastReport = null;
-$('runBtn').onclick = () => {
-  if (!MIXBOX_OK){ $('runStatus').textContent = '错误：需要网络加载 mixbox.js 才能运行。'; $('runStatus').className = 'status err'; return; }
-  const seed = parseInt($('seed').value) || 20260808;
-  const n = Math.min(20000, Math.max(10, parseInt($('randN').value) || 2000));
-  const names = MODELS.filter((_, i) => enabled[i]).map(m => m.name);
-  const t0 = performance.now();
-  const report = buildReport({ seed, n, modelNames: names });
-  lastReport = report;
-  $('runStatus').textContent = '完成：' + (performance.now() - t0).toFixed(0) + ' ms（seed=' + seed + '，随机 ' + n + ' 对）';
-  $('runStatus').className = 'status ok';
-  renderSummary(report);
-  renderCategories(report);
-  renderT4(report);
-  renderWorst(report);
-  $('exportState').textContent = '';
-};
-
-function cell(txt, cls){ const td = document.createElement('td'); if (cls) td.className = cls; td.textContent = txt; return td; }
-function headRow(labels){ const tr = document.createElement('tr'); labels.forEach(l => { const th = document.createElement('th'); th.textContent = l; tr.appendChild(th); }); return tr; }
-
-function renderSummary(r){
-  const tbl = $('summaryTbl');
-  const thead = tbl.querySelector('thead'), tbody = tbl.querySelector('tbody');
-  thead.innerHTML = ''; tbody.innerHTML = '';
-  thead.appendChild(headRow([
-    '模型', 'T1 max', 'T1 mean', 'T1 p95', 'T1 ΔE76', 'T2 max', 'T2 mean', 'T2 p95', 'T2 ΔE76',
-    'T3 max', 'T3 mean', 'T3 p95', 'T3 ΔE76',
-    'T5 max', 'T5 mean', 'T5 p95', 'T5 ΔE76', '通过'
-  ]));
-  for (const m of MODELS){
-    const d = r.models[m.name];
-    if (!d) continue;
-    const tr = document.createElement('tr');
-    tr.appendChild(cell(m.name, 'name'));
-    tr.appendChild(cell(d.T1.de00.max.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T1.de00.mean.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T1.de00.p95.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T1.de76.max.toFixed(2) + ' / ' + d.T1.de76.mean.toFixed(2), 'de00'));
-    tr.appendChild(cell(d.T2.de00.max.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T2.de00.mean.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T2.de00.p95.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T2.de76.max.toFixed(2) + ' / ' + d.T2.de76.mean.toFixed(2), 'de00'));
-    tr.appendChild(cell(d.T3.de00.max.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T3.de00.mean.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T3.de00.p95.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T3.de76.max.toFixed(2) + ' / ' + d.T3.de76.mean.toFixed(2), 'de00'));
-    tr.appendChild(cell(d.T5.de00.max.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T5.de00.mean.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T5.de00.p95.toFixed(3), 'mono'));
-    tr.appendChild(cell(d.T5.de76.max.toFixed(2) + ' / ' + d.T5.de76.mean.toFixed(2), 'de00'));
-    tr.appendChild(cell(d.pass ? 'PASS' : 'FAIL', d.pass ? 'pass-y' : 'pass-n'));
-    tbody.appendChild(tr);
-  }
-}
-
-function renderCategories(r){
-  const cats = ['互补对', 'RYB错配', '白黑混合', '相似色', '调色板', '随机', '深色+白', '深色+白·随机'];
-  const tbl = $('catTbl');
-  const thead = tbl.querySelector('thead'), tbody = tbl.querySelector('tbody');
-  thead.innerHTML = ''; tbody.innerHTML = '';
-  thead.appendChild(headRow(['分类', ...MODELS.filter(m => r.models[m.name]).map(m => m.name)]));
-  const pool = {
-    调色板: buildT1(), 随机: buildT3(r.seed, r.randomPairs)
+  const TEXT = {
+    en: {
+      brand_sub: 'pigment-based mixing', nav_demo: 'Demo', nav_eval: 'Evaluation', nav_paper: 'Paper',
+      h1: 'Treat mixing as a measurement.',
+      lede: 'One test set, one reference, one metric: CIEDE2000 on sRGB display values. A run reports the mean and maximum for the palette, stress-pair, random and dark-plus-white suites, plus each model’s five worst pairs.',
+      ciede_ok: 'CIEDE2000 replication passed · max deviation {d} ({n} reference pairs)',
+      ciede_bad: 'CIEDE2000 replication failed · max deviation {d}',
+      ref_ok: 'Reference: Mixbox 2.0 lerpFloat (display-value float path)',
+      ref_bad: 'Reference unavailable: scrtwpns.com is not reachable',
+      cfg_h: 'Run configuration', cfg_seed: 'Random seed', cfg_seed_h: 'T3 draws with a fixed seed, so results reproduce',
+      cfg_n: 'Random pairs', cfg_n_h: 'uniform sRGB × α ∈ [0,1]', cfg_models: 'Models',
+      run: 'Run full suite', idle: 'Not run yet',
+      tile_t1: 'T1 palette', tile_t2: 'T2 stress pairs', tile_t3: 'T3 random', tile_t5: 'T5 dark + white',
+      k_sum: 'Summary', h_sum: 'ΔE00 by suite',
+      p_sum: 'The acceptance target applies to dark + white only: mean below 5, maximum at most 15. The main-suite maxima come from pairs with a large lightness gap and hue opposition; they are recorded, not used as an acceptance criterion.',
+      k_fam: 'Families', h_fam: 'Mean error by colour family',
+      p_fam: 'The same samples split by family: complementary and mismatched pairs exercise cross-channel coupling, dark + white exercises the structural defect of K/S superposition.',
+      k_t4: 'Identity', h_t4: 'Endpoint behaviour (T4)',
+      p_t4: 'α = 0 and α = 1 must return the input exactly; channel tolerance 0.01.',
+      k_tail: 'Tail', h_tail: 'Five worst pairs',
+      p_tail: 'Sorted by ΔE00, descending; swatches are the model output and the reference.',
+      worst_idle: 'Runs appear here',
+      exp_h: 'Export', exp_copy: 'Copy JSON', exp_dl: 'Download JSON',
+      th_model: 'model', th_family: 'family', th_mean: 'mean', th_max: 'max', th_accept: 'dark + white',
+      th_err: 'max channel error', th_samples: 'samples', th_tol: 'tolerance 0.01',
+      pass: 'pass', fail: 'over',
+      st_running: 'running…', st_done: 'done · {ms} ms · seed {seed} · {n} random pairs',
+      st_neednet: 'needs network access to load mixbox.js', st_nomodel: 'select at least one model',
+      st_first: 'run the suite first', st_copied: 'copied', st_downloaded: 'downloaded',
+      foot_left: 'Pigment-Based Mixing · evaluation suite', foot_demo: 'Mixing bench', foot_paper: 'Technical paper'
+    },
+    zh: {
+      brand_sub: '颜料基混色', nav_demo: '演示', nav_eval: '评估', nav_paper: '论文',
+      h1: '把混色当测量。',
+      lede: '同一套测试集、同一参考系、同一个度量：sRGB 显示值上的 CIEDE2000。运行后给出调色板、压力对、随机对与深色加白四组的均值与最大值，并列出每个模型最差的五对颜色。',
+      ciede_ok: 'CIEDE2000 复刻通过 · 最大偏差 {d}（{n} 组参考对）',
+      ciede_bad: 'CIEDE2000 复刻未通过 · 最大偏差 {d}',
+      ref_ok: '参考系：Mixbox 2.0 lerpFloat（显示值浮点路径）',
+      ref_bad: '参考系不可用：无法访问 scrtwpns.com',
+      cfg_h: '运行配置', cfg_seed: '随机 seed', cfg_seed_h: 'T3 随机集固定 seed，结果可复现',
+      cfg_n: '随机对数', cfg_n_h: '均匀 sRGB × α ∈ [0,1]', cfg_models: '被测模型',
+      run: '运行全套件', idle: '尚未运行',
+      tile_t1: 'T1 调色板', tile_t2: 'T2 压力对', tile_t3: 'T3 随机', tile_t5: 'T5 深色+白',
+      k_sum: '汇总', h_sum: '各套件 ΔE00',
+      p_sum: '验收目标只针对深色加白：均值 < 5、最大值 ≤ 15。主套件的最大值由“大变明度差叠加色相对立”的颜色对决定，如实记录，不作为验收标准。',
+      k_fam: '分族', h_fam: '按颜色族细分',
+      p_fam: '同一批样本按族拆开看均值：互补与错配族最考验跨通道关联，深色加白族最考验 K/S 叠加的结构性缺陷。',
+      k_t4: '恒等', h_t4: '端点行为 T4',
+      p_t4: 'α = 0 与 α = 1 必须精确返回输入；通道容差 0.01。',
+      k_tail: '尾端', h_tail: '最差五对',
+      p_tail: '按 ΔE00 降序列出；色块为模型输出与参考。',
+      worst_idle: '运行后显示',
+      exp_h: '导出', exp_copy: '复制 JSON', exp_dl: '下载 JSON',
+      th_model: '模型', th_family: '颜色族', th_mean: '均值', th_max: '最大', th_accept: '深色加白验收',
+      th_err: '最大通道误差', th_samples: '样本数', th_tol: '容差 0.01',
+      pass: '通过', fail: '超出',
+      st_running: '运行中…', st_done: '完成 · {ms} ms · seed {seed} · {n} 个随机对',
+      st_neednet: '需要网络加载 mixbox.js 才能运行。', st_nomodel: '至少选择一个模型。',
+      st_first: '请先运行', st_copied: '已复制', st_downloaded: '已下载',
+      foot_left: 'Pigment-Based Mixing · 评估套件', foot_demo: '混色台', foot_paper: '技术论文'
+    }
   };
-  for (const cat of cats){
+
+  const MODEL_LABEL = {
+    '我们的方法（PBM）': { en: 'our model (PBM)', zh: '我们的方法（PBM）' },
+    'RGB 插值': { en: 'RGB interpolation', zh: 'RGB 插值' },
+    'Kubelka–Munk': { en: 'Kubelka–Munk', zh: 'Kubelka–Munk' }
+  };
+  const CAT_LABEL = {
+    '互补对': { en: 'complementary', zh: '互补对' },
+    'RYB错配': { en: 'RYB mismatch', zh: 'RYB 错配' },
+    '白黑混合': { en: 'white / black', zh: '白黑混合' },
+    '相似色': { en: 'similar', zh: '相似色' },
+    '调色板': { en: 'palette', zh: '调色板' },
+    '随机': { en: 'random', zh: '随机' },
+    '深色+白': { en: 'dark + white', zh: '深色+白' },
+    '深色+白·随机': { en: 'dark + white (random)', zh: '深色+白·随机' }
+  };
+
+  let LANG = (() => {
+    const q = new URLSearchParams(location.search).get('lang');
+    if (q) return q === 'zh' ? 'zh' : 'en';
+    try { if (localStorage.getItem('pbm-lang') === 'zh') return 'zh'; } catch (e) {}
+    return 'en';
+  })();
+  const t = k => (TEXT[LANG][k] !== undefined ? TEXT[LANG][k] : TEXT.en[k]);
+  const mLabel = n => (MODEL_LABEL[n] ? MODEL_LABEL[n][LANG] : n);
+  const cLabel = n => (CAT_LABEL[n] ? CAT_LABEL[n][LANG] : n);
+
+  const MIXBOX_OK = !!mixboxRef;
+  const OURS = MODELS[0].name;
+  let lastReport = null;
+
+  /* ---- 静态文案 ---- */
+  function applyStatic(){
+    document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
+    document.title = (LANG === 'zh' ? '评估套件' : 'Evaluation suite') + ' · Pigment-Based Mixing';
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll('#lang button').forEach(b => b.classList.toggle('on', b.dataset.lang === LANG));
+    const paper = LANG === 'zh' ? '../docs/color-mixing-algorithm.zh-CN.pdf' : '../docs/color-mixing-algorithm.pdf';
+    document.querySelectorAll('a[data-i18n="nav_paper"], a[data-i18n="foot_paper"]').forEach(a => { a.href = paper; });
+    const brand = document.querySelector('.brand');
+    if (brand) brand.href = LANG === 'zh' ? '../README.zh-CN.md' : '../README.md';
+    renderBadges();
+  }
+
+  function renderBadges(){
+    const r = validateDeltaE2000();
+    $('ciedeStatus').textContent = (r.pass ? t('ciede_ok') : t('ciede_bad'))
+      .replace('{d}', r.maxAbsDev.toExponential(2)).replace('{n}', String(r.n));
+    $('ciedeBadge').className = 'badge ' + (r.pass ? 'ok' : 'bad');
+    $('refState').textContent = MIXBOX_OK ? t('ref_ok') : t('ref_bad');
+    $('refBadge').className = 'badge ' + (MIXBOX_OK ? 'ok' : 'bad');
+  }
+
+  /* ---- 模型选择 ---- */
+  const enabled = {};
+  function buildModels(){
+    $('modelList').innerHTML = '';
+    MODELS.forEach((m, i) => {
+      if (enabled[i] === undefined) enabled[i] = true;
+      const label = document.createElement('label');
+      label.className = 'mchip';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = enabled[i];
+      cb.onchange = () => { enabled[i] = cb.checked; };
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(mLabel(m.name)));
+      $('modelList').appendChild(label);
+    });
+  }
+
+  /* ---- 表格工具 ---- */
+  function headRow(labels){
     const tr = document.createElement('tr');
-    tr.appendChild(cell(cat, 'name'));
+    labels.forEach(l => { const th = document.createElement('th'); th.textContent = l; tr.appendChild(th); });
+    return tr;
+  }
+  function td(txt, cls){
+    const cell = document.createElement('td');
+    if (cls) cell.className = cls;
+    cell.textContent = txt;
+    return cell;
+  }
+
+  /* ---- 顶部四格 ---- */
+  function renderTiles(report){
+    const tiles = $('tiles');
+    tiles.hidden = false;
+    const d = report.models[OURS];
+    if (!d) return;
+    [['t1','T1'],['t2','T2'],['t3','T3'],['t5','T5']].forEach(([id, key]) => {
+      const s = d[key];
+      if (!s){ $(id + 'm').textContent = '—'; return; }
+      $(id + 'n').textContent = 'n=' + s.n;
+      $(id + 'm').textContent = fmt(s.de00.mean, 2);
+      $(id + 'x').textContent = 'max ' + fmt(s.de00.max, 1) + ' · p95 ' + fmt(s.de00.p95, 2);
+    });
+  }
+
+  /* ---- 汇总表 ---- */
+  function renderSummary(report){
+    const tbl = $('summaryTbl');
+    const thead = tbl.querySelector('thead'), tbody = tbl.querySelector('tbody');
+    thead.innerHTML = ''; tbody.innerHTML = '';
+    const head = [t('th_model')];
+    for (const k of ['T1','T2','T3','T5']) head.push(k + ' ' + t('th_mean'), k + ' ' + t('th_max'));
+    head.push('T5E ' + t('th_mean'), t('th_accept'));
+    thead.appendChild(headRow(head));
     for (const m of MODELS){
-      if (!r.models[m.name]) continue;
-      const samples = cat === '调色板' || cat === '随机'
-        ? pool[cat]
-        : cat === '深色+白' || cat === '深色+白·随机'
-          ? buildT5().filter(s => s.cat === cat)
-          : buildT2().filter(s => s.cat === cat);
-      const es = evaluateSet(m, samples, (b,t,a) => mixboxRef(b,t,a));
-      const s = statsOf(es);
-      tr.appendChild(cell(s ? s.de00.mean.toFixed(3) : '—', 'mono'));
-    }
-    tbody.appendChild(tr);
-  }
-}
-
-function renderT4(r){
-  const tbl = $('t4Tbl');
-  const thead = tbl.querySelector('thead'), tbody = tbl.querySelector('tbody');
-  thead.innerHTML = ''; tbody.innerHTML = '';
-  thead.appendChild(headRow(['模型', '最大通道误差', '样本数', '容差 0.01', '状态']));
-  for (const m of MODELS){
-    const d = r.models[m.name];
-    if (!d) continue;
-    const tr = document.createElement('tr');
-    tr.appendChild(cell(m.name, 'name'));
-    tr.appendChild(cell(d.T4.maxChannelError.toFixed(5), 'mono'));
-    tr.appendChild(cell(d.T4.n));
-    tr.appendChild(cell(d.T4.pass ? 'PASS' : 'FAIL', d.T4.pass ? 'pass-y' : 'pass-n'));
-    tr.appendChild(cell(d.T4.pass ? '通过' : '超出', 'de00'));
-    tbody.appendChild(tr);
-  }
-}
-
-function renderWorst(r){
-  const box = $('worstBox');
-  box.innerHTML = '';
-  for (const { model, worst } of r.worst){
-    const h = document.createElement('div');
-    h.style.cssText = 'font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:14px 0 4px';
-    h.textContent = model;
-    box.appendChild(h);
-    for (const w of worst){
-      const item = document.createElement('div');
-      item.className = 'worst-item';
-      const sw1 = document.createElement('span'); sw1.className = 'sw'; sw1.style.background = hex(w.base);
-      const sw2 = document.createElement('span'); sw2.className = 'sw'; sw2.style.background = hex(w.tint);
-      const swm = document.createElement('span'); swm.className = 'sw'; swm.style.background = hex(w.m);
-      const swr = document.createElement('span'); swr.className = 'sw'; swr.style.background = hex(w.r);
-      const meta = document.createElement('span');
-      meta.className = 'meta';
-      meta.innerHTML = 'α=' + w.a.toFixed(2) + ' · 混合 <b>' + hex(w.m) + '</b> · 参考 <b>' + hex(w.r) + '</b>';
-      const de = document.createElement('span');
-      de.className = 'de';
-      de.textContent = 'ΔE00 ' + w.de00.toFixed(2) + ' · ΔE76 ' + w.de76.toFixed(2);
-      item.appendChild(sw1); item.appendChild(sw2); item.appendChild(swm); item.appendChild(swr);
-      item.appendChild(meta); item.appendChild(de);
-      box.appendChild(item);
+      const d = report.models[m.name];
+      if (!d) continue;
+      const tr = document.createElement('tr');
+      tr.appendChild(td(mLabel(m.name), 'name'));
+      for (const key of ['T1','T2','T3','T5']){
+        tr.appendChild(td(d[key] ? fmt(d[key].de00.mean, 3) : '—', 'mono'));
+        tr.appendChild(td(d[key] ? fmt(d[key].de00.max, 1) : '—', 'mono'));
+      }
+      tr.appendChild(td(d.T5E ? fmt(d.T5E.de00.mean, 3) : '—', 'mono'));
+      const target = d.T5 && d.T5E && d.T5.de00.mean < 5 && d.T5.de00.max <= 15 && d.T5E.de00.mean < 5;
+      tr.appendChild(td(target ? t('pass') : t('fail'), target ? 'pass' : 'fail'));
+      tbody.appendChild(tr);
     }
   }
-}
 
-/* 导出 */
-$('copyBtn').onclick = () => {
-  if (!lastReport){ $('exportState').textContent = '请先运行'; return; }
-  const text = JSON.stringify(lastReport, null, 2);
-  const done = () => $('exportState').textContent = '已复制';
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(done);
-  else done();
-};
-$('dlBtn').onclick = () => {
-  if (!lastReport){ $('exportState').textContent = '请先运行'; return; }
-  const blob = new Blob([JSON.stringify(lastReport, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'texturge-mix-eval-' + lastReport.date + '.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-  $('exportState').textContent = '已下载';
-};
-}
+  /* ---- 分族均值 ---- */
+  const CATS = ['互补对', 'RYB错配', '白黑混合', '相似色', '调色板', '随机', '深色+白', '深色+白·随机'];
+  function renderCategories(report){
+    const tbl = $('catTbl');
+    const thead = tbl.querySelector('thead'), tbody = tbl.querySelector('tbody');
+    thead.innerHTML = ''; tbody.innerHTML = '';
+    const active = MODELS.filter(m => report.models[m.name]);
+    thead.appendChild(headRow([t('th_family'), ...active.map(m => mLabel(m.name))]));
+    const t2 = buildT2(), t5 = buildT5();
+    const pool = {
+      '互补对': t2.filter(s => s.cat === '互补对'),
+      'RYB错配': t2.filter(s => s.cat === 'RYB错配'),
+      '白黑混合': t2.filter(s => s.cat === '白黑混合'),
+      '相似色': t2.filter(s => s.cat === '相似色'),
+      '调色板': buildT1(),
+      '随机': buildT3(report.seed, report.randomPairs),
+      '深色+白': t5.filter(s => s.cat === '深色+白'),
+      '深色+白·随机': t5.filter(s => s.cat === '深色+白·随机')
+    };
+    for (const cat of CATS){
+      const tr = document.createElement('tr');
+      tr.appendChild(td(cLabel(cat), 'name'));
+      for (const m of active){
+        const s = statsOf(evaluateSet(m, pool[cat], mixboxRef));
+        tr.appendChild(td(s ? fmt(s.de00.mean, 3) : '—', 'mono'));
+      }
+      tbody.appendChild(tr);
+    }
+  }
 
+  /* ---- T4 ---- */
+  function renderT4(report){
+    const tbl = $('t4Tbl');
+    const thead = tbl.querySelector('thead'), tbody = tbl.querySelector('tbody');
+    thead.innerHTML = ''; tbody.innerHTML = '';
+    thead.appendChild(headRow([t('th_model'), t('th_err'), t('th_samples'), t('th_tol')]));
+    for (const m of MODELS){
+      const d = report.models[m.name];
+      if (!d) continue;
+      const tr = document.createElement('tr');
+      tr.appendChild(td(mLabel(m.name), 'name'));
+      tr.appendChild(td(d.T4.maxChannelError.toFixed(5), 'mono'));
+      tr.appendChild(td(String(d.T4.n), 'mono'));
+      tr.appendChild(td(d.T4.pass ? t('pass') : t('fail'), d.T4.pass ? 'pass' : 'fail'));
+      tbody.appendChild(tr);
+    }
+  }
+
+  /* ---- 最差对 ---- */
+  function renderWorst(report){
+    const box = $('worstBox');
+    box.innerHTML = '';
+    for (const { model, worst } of report.worst){
+      const col = document.createElement('div');
+      const h = document.createElement('div');
+      h.style.cssText = 'font-size:11.5px;color:var(--ink3);margin:0 0 4px';
+      h.textContent = mLabel(model);
+      col.appendChild(h);
+      for (const w of worst){
+        const item = document.createElement('div');
+        item.className = 'wrow';
+        item.innerHTML =
+          '<span class="sw" style="background:' + hexOf(w.m) + '"></span>' +
+          '<span class="sw" style="background:' + hexOf(w.r) + '"></span>' +
+          '<span class="meta">α=' + w.a.toFixed(2) + ' · ' + hexOf(w.m) + ' → ' + hexOf(w.r) + '</span>' +
+          '<span class="d">' + w.de00.toFixed(2) + '</span>';
+        col.appendChild(item);
+      }
+      box.appendChild(col);
+    }
+  }
+
+  function renderAll(report){
+    renderTiles(report);
+    renderSummary(report);
+    renderCategories(report);
+    renderT4(report);
+    renderWorst(report);
+    $('summaryWrap').hidden = false; $('catWrap').hidden = false; $('t4Wrap').hidden = false;
+  }
+
+  /* ---- 运行 ---- */
+  $('runBtn').onclick = () => {
+    if (!MIXBOX_OK){
+      $('runStatus').textContent = t('st_neednet');
+      $('runStatus').className = 'status err';
+      return;
+    }
+    const seed = parseInt($('seed').value, 10) || 20260808;
+    const n = clamp(parseInt($('randN').value, 10) || 2000, 10, 20000);
+    const names = MODELS.filter((_, i) => enabled[i]).map(m => m.name);
+    if (!names.length){
+      $('runStatus').textContent = t('st_nomodel');
+      $('runStatus').className = 'status err';
+      return;
+    }
+    $('runBtn').disabled = true;
+    $('runStatus').className = 'status';
+    $('runStatus').textContent = t('st_running');
+    setTimeout(() => {
+      const t0 = performance.now();
+      const report = buildReport({ seed, n, modelNames: names });
+      lastReport = report;
+      renderAll(report);
+      $('runBtn').disabled = false;
+      $('runStatus').textContent = t('st_done')
+        .replace('{ms}', String(Math.round(performance.now() - t0)))
+        .replace('{seed}', String(seed))
+        .replace('{n}', String(n));
+      $('exportState').textContent = '';
+    }, 20);
+  };
+
+  /* ---- 导出 ---- */
+  const asText = () => JSON.stringify(lastReport, null, 2);
+  $('copyBtn').onclick = () => {
+    if (!lastReport){ $('exportState').textContent = t('st_first'); return; }
+    const done = () => { $('exportState').textContent = t('st_copied'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(asText()).then(done, done);
+    else done();
+  };
+  $('dlBtn').onclick = () => {
+    if (!lastReport){ $('exportState').textContent = t('st_first'); return; }
+    const blob = new Blob([asText()], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pbm-eval-' + lastReport.date + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    $('exportState').textContent = t('st_downloaded');
+  };
+
+  /* ---- 语言切换 ---- */
+  function setLang(lang){
+    LANG = lang === 'zh' ? 'zh' : 'en';
+    try { localStorage.setItem('pbm-lang', LANG); } catch (e) {}
+    applyStatic();
+    buildModels();
+    if (lastReport) renderAll(lastReport);
+    if ($('exportState').textContent && lastReport) $('exportState').textContent = '';
+  }
+  $('lang').addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-lang]');
+    if (b) setLang(b.dataset.lang);
+  });
+
+  /* ---- 启动 ---- */
+  applyStatic();
+  buildModels();
+
+  (function(){
+    const q = new URLSearchParams(location.search);
+    if (q.has('seed')) $('seed').value = q.get('seed');
+    if (q.has('n')) $('randN').value = q.get('n');
+    if (q.get('run') === '1' && MIXBOX_OK) setTimeout(() => $('runBtn').click(), 60);
+  })();
+}

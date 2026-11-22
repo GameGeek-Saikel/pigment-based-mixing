@@ -1,0 +1,37 @@
+\section{Background and Related Work}
+\label{sec:background}
+
+\subsection{The Physics of Pigment Mixing}
+\label{sec:km}
+
+The color of a pigmented layer results from wavelength-selective absorption and scattering by pigment particles. In the two-flux Kubelka--Munk model, each pigment $i$ is described by an absorption coefficient $K_i(\lambda)$ and a scattering coefficient $S_i(\lambda)$. For non-negative concentrations $c_i$ summing to one, Duncan's superposition gives
+\begin{equation}
+K(\lambda)=\sum_i c_i K_i(\lambda),\qquad
+S(\lambda)=\sum_i c_i S_i(\lambda),
+\label{eq:duncan}
+\end{equation}
+and the reflectance of an opaque layer at wavelength $\lambda$ is
+\begin{equation}
+\Rinf(\lambda)=1+\kappa(\lambda)-\sqrt{\kappa(\lambda)^{2}+2\kappa(\lambda)},
+\qquad \kappa(\lambda)=\frac{K(\lambda)}{S(\lambda)}.
+\label{eq:km}
+\end{equation}
+A display color is obtained by integrating the reflectance against an illuminant and the CIE standard observer, optionally applying Saunderson's surface correction, and converting to sRGB \cite{saunderson1942,haase1992,wyszecki2000}. The model is physically interpretable but requires spectral data: an RGB triple does not determine $K_i(\lambda)$ or $S_i(\lambda)$, and mixing two arbitrary RGB colors requires solving for pigment concentrations numerically because \cref{eq:km} has no analytic inverse with respect to RGB.
+
+\subsection{Related Work}
+\label{sec:related}
+
+\paragraph{RGB interpolation.}
+Linear interpolation, to which blending, compositing, and smudging reduce in most pipelines, models additive light mixing. It is exact for light but produces gray from complementary pigments and desaturates dark colors toward white, the two defects that motivate this work.
+
+\paragraph{RYB interpolation.}
+Gossett and Chen \cite{gossett2004} interpolate eight hand-selected colors in a three-dimensional cube so that blue and yellow produce green. The construction reproduces the direction of the hue shift but not the colorimetric behavior of pigments; we do not evaluate it in this work.
+
+\paragraph{Subtractive and hybrid models.}
+Overlaid-filter models account for absorption but not scattering; yellow and blue produce green, but the result is too dark and off-hue. Hybrid subtractive--additive formulas \cite{simonot2014} lighten the result while retaining much of the color error.
+
+\paragraph{Data-driven approaches.}
+Lu et al. \cite{lu2014} interpolate example pigment mixtures at predetermined ratios. Pigment-palette extraction \cite{aharoni2017,tan2019} and reduced-order parametric models \cite{shugrina2020} target artwork manipulation rather than interactive mixing of arbitrary colors.
+
+\paragraph{Mixbox.}
+Mixbox \cite{sochorova2021} encodes an sRGB color into a seven-dimensional latent vector---four pigment concentrations (Phthalo Blue, Quinacridone Magenta, Hansa Yellow, Titanium White) and three additive residuals---trained on measured pigment spectra so that latent mixtures remain inside the sRGB gamut. Latents are mixed linearly and decoded with $256^{3}$ encoder and decoder tables. The model is the reference for the present work. It is trained and table-based rather than analytic, and the reference implementation is distributed under a non-commercial license.

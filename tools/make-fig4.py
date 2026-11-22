@@ -41,7 +41,9 @@ def build(data_path, out_dir):
         bins = np.arange(0, xmax + 0.501, 0.5)
         counts, _ = np.histogram(de, bins=bins)
         ymax = float(counts.max())
-        ax.hist(de, bins=bins, color='#3b6fe0', alpha=0.75, edgecolor='none')
+        # 细白描边：相邻等高柱之间保留可见分界（否则连续的柱会连成一片）
+        ax.hist(de, bins=bins, color='#3b6fe0', alpha=0.88,
+                edgecolor='white', linewidth=0.8)
         mean = float(de.mean())
         # 顶部留 32% 余量，mean 标注位于条顶之上、面板之内
         ax.set_ylim(0, ymax * 1.32)

@@ -8,7 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const DIR = path.join(__dirname, '..', '..', 'docs', 'assets');
+const DIR = path.join(__dirname, '..', 'docs', 'assets');
 
 /* 把片段内元素的坐标平移 (dx, dy) */
 function offsetFragment(inner, dx, dy) {

@@ -1,0 +1,37 @@
+\section{背景与相关工作}
+\label{sec:background}
+
+\subsection{颜料混色的物理}
+\label{sec:km}
+
+颜料层的颜色来自颜料颗粒对光的选择性吸收与散射。在 Kubelka--Munk 双流模型中，每种颜料 $i$ 由吸收系数 $K_i(\lambda)$ 与散射系数 $S_i(\lambda)$ 描述。对非负且和为 1 的浓度 $c_i$，Duncan 叠加给出
+\begin{equation}
+K(\lambda)=\sum_i c_i K_i(\lambda),\qquad
+S(\lambda)=\sum_i c_i S_i(\lambda),
+\label{eq:duncan}
+\end{equation}
+不透明层在波长 $\lambda$ 处的反射率为
+\begin{equation}
+\Rinf(\lambda)=1+\kappa(\lambda)-\sqrt{\kappa(\lambda)^{2}+2\kappa(\lambda)},
+\qquad \kappa(\lambda)=\frac{K(\lambda)}{S(\lambda)}.
+\label{eq:km}
+\end{equation}
+将反射率与光源、CIE 标准观察者积分，可选地施加 Saunderson 表面修正，再转换为 sRGB，即得到显示颜色 \cite{saunderson1942,haase1992,wyszecki2000}。该模型具有物理解释，但需要光谱数据：一个 RGB 三元组不能确定 $K_i(\lambda)$ 或 $S_i(\lambda)$，且混合两个任意 RGB 颜色需要数值求解颜料浓度，因为 \cref{eq:km} 对 RGB 没有解析逆。
+
+\subsection{相关工作}
+\label{sec:related}
+
+\paragraph{RGB 插值。}
+线性插值——多数管线中的混合、合成与涂抹都归结于此——建模的是加性光混合。它对光精确，但对互补颜料产生灰色，并使深色向白色去饱和；这正是本文要处理的两个缺陷。
+
+\paragraph{RYB 插值。}
+Gossett 与 Chen \cite{gossett2004} 在三维立方体中插值八个手工选择的颜色，使蓝与黄产生绿色。该构造复现了色相偏移的方向，但不能复现颜料的色度行为；本文不评估该模型。
+
+\paragraph{减性与混合模型。}
+叠色滤光片模型只考虑吸收、不考虑散射；黄与蓝产生绿色，但结果过暗且色相有偏差。混合减—加公式 \cite{simonot2014} 使结果变亮，但仍保留大部分颜色误差。
+
+\paragraph{数据驱动方法。}
+Lu 等 \cite{lu2014} 在预定比例上插值示例颜料混合物。颜料调色板提取 \cite{aharoni2017,tan2019} 与降阶参数化模型 \cite{shugrina2020} 面向作品操作，而不是任意颜色的交互混色。
+
+\paragraph{Mixbox。}
+Mixbox \cite{sochorova2021} 将 sRGB 颜色编码为七维潜向量——四个颜料浓度（酞菁蓝、喹吖啶酮品红、汉莎黄、钛白）与三个加性残差——并训练自实测颜料光谱，使潜空间混合保持在 sRGB 色域内。潜向量线性混合，经 $256^{3}$ 编码器与解码器表转换回 RGB。该模型是本文的参考；它是训练得到的、基于查找表的，而非解析的，且参考实现采用非商业许可。

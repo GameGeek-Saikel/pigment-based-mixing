@@ -1,29 +1,101 @@
 /* =====================================================================
- * color-mixing-demo.js — 演示页 UI（色轮、并排对照、α 过渡、ΔE00 实时）
+ * color-mixing-demo.js — mixing-bench page logic
  *
- * 算法与色度工具来自 ../javascript/color-mixing.js（window.ColorMixing），
- * 光谱真值行来自 spectral-inline.js（window.PigmentData / window.Spectral）。
- * 本文件只含页面交互逻辑与参考模型调用。（提取自原内联脚本，勿手改）
+ * 依赖：../javascript/color-mixing.js（window.ColorMixing.mixPbm）
+ *       spectral-inline.js（window.Spectral：合成颜料光谱的两常数 K–M 管线）
+ *       mixbox.js（官方 CDN，异步；缺失时该行显示未加载）
  *
- * 浏览器：<script src="spectral-inline.js"></script>
- *          <script src="../javascript/color-mixing.js"></script>
- *          <script src="color-mixing-demo.js"></script>
+ * 页面结构见 color-mixing-demo.html。默认英文，可切换中文（?lang=zh 或页头按钮）。
  * =================================================================== */
 'use strict';
-const { mixPbm, mixPigment } = ColorMixing;   // mat3Inv 由下方页面 helpers 自带
-let base = [1, 1, 1], tint = [1, 0.839, 0.102], alpha = 0.5;
 
+const { mixPbm } = ColorMixing;
 
-/* ===== helpers ===== */
+/* ---------- 文案 ---------- */
+const TEXT = {
+  en: {
+    brand_sub: 'pigment-based mixing',
+    nav_demo: 'Demo', nav_eval: 'Evaluation', nav_paper: 'Paper',
+    h1: 'One pair of colors.<br><em>Two ways to mix.</em>',
+    lede: 'Pigments subtract, light adds. The five strips below run one pair of colors across the whole tint share: our model, the Mixbox reference, an independent synthetic-spectra truth, RGB interpolation, and display-value K–M. Drag across the bench to sample; the right column is CIEDE2000 against the reference.',
+    lbl_base: 'base', lbl_tint: 'tint', spec_name: 'our model', ctl_ratio: 'Tint share',
+    sec_kicker: 'Stress pairs', sec_h2: 'Fixed pairs at three ratios',
+    sec_p: 'Complementary, RYB mismatch, white/black and dark + white. Each cell shows the model’s mix and its ΔE00 against the reference; chroma error above 2.5 is marked ochre, above 5 vermilion. The spectral column comes from synthetic pigment spectra through unmix and two-constant K–M mixing; its difference from the reference is structural, not error.',
+    row_pbm: 'our model', row_mx: 'Mixbox reference', row_spec: 'spectral truth',
+    row_rgb: 'RGB interpolation', row_km: 'K–M display-value',
+    de_ref: 'ref', de_na: '—',
+    th_pair: 'pair', th_ref: 'reference', th_ours: 'our model', th_rgb: 'RGB interpolation', th_km: 'K–M (spectral)',
+    cat_comp: 'complementary', cat_mis: 'RYB mismatch', cat_wb: 'white / black', cat_sim: 'similar', cat_dark: 'dark + white',
+    tbl_note: 'α = {a} · spectral column computed pair by pair (unmix cached).',
+    note1_h: 'The model',
+    note1_p: 'A two-stage formula: a K–M/Duncan mixing core plus a repair layer. The core applies a broadband 3×3 matrix, analytic K/S defaults, κ concentration mixing, mutual absorption and a rational R∞; the repair layer adds a soft role assignment λ, a dark-plus-light gate <code>g</code>, a per-channel power-law target and a seventeen-feature harmonic correction. No trigonometric function, no lookup table.',
+    note2_h: 'The comparisons',
+    note2_p: '<b>RGB interpolation</b> is additive light mixing, so complementary colors go gray. <b>Display-value K–M</b> treats channel values as reflectances, so dark colors washed with white lose absorption. <b>Spectral truth</b> comes from 29 synthetic pigment spectra (two-constant K–M; band structure from pigment chemistry, numbers calibrated to the public BabelColor ColorChecker spectra) through Duncan superposition and D65 integration, after a deterministic unmix of the RGB input into four pigment concentrations. <b>Mixbox 2.0</b> mixes linearly in a seven-dimensional latent space trained on measured pigment spectra and is the reference here.',
+    note3_h: 'Reading it',
+    note3_p: 'ΔE00 below 1 is imperceptible, 1–2 visible on close inspection, 2–4 clearly visible, above 4 substantial. Our model measures 2.26 mean / 7.3 max on dark + white, and 3.29 / 2.67 / 2.78 on the three main suites. Full statistics and the held-out split are on the evaluation page and in the paper. The Mixbox reference library is loaded from its official CDN under CC BY-NC 4.0, for research comparison only.',
+    foot_left: 'Pigment-Based Mixing · mixing bench', foot_eval: 'Evaluation suite', foot_paper: 'Technical paper',
+    mixbox_missing: 'reference not loaded (needs network)',
+    presets: {
+      base: ['white','gray','black','red','orange','yellow','green','cyan','blue','violet'],
+      tint: ['cadmium yellow','ultramarine','vermilion','emerald','magenta','orange red','cyan','white']
+    }
+  },
+  zh: {
+    brand_sub: '颜料基混色',
+    nav_demo: '演示', nav_eval: '评估', nav_paper: '论文',
+    h1: '同一对颜色，<br><em>两条混合路径。</em>',
+    lede: '颜料相减，光相加。下面五条色带是同一对颜色沿混合比铺开的全程：从上到下依次为本模型、Mixbox 参考、独立合成光谱真值、RGB 插值与显示值 K–M。横向拖动取样，右端是本模型与参考的 CIEDE2000 色差。',
+    lbl_base: '基色', lbl_tint: '染色', spec_name: '本模型', ctl_ratio: '混合比 · 染色占比',
+    sec_kicker: '压力对', sec_h2: '固定色对 × 三档配比',
+    sec_p: '互补、RYB 错配、白黑与深色加白四族。每格显示该模型混出色与相对参考的 ΔE00；色度差大于 2.5 标赭色，大于 5 标朱红。光谱真值列由合成颜料光谱经 unmix 与两常数 K–M 混合得到，与参考的差异是结构性的，不是误差。',
+    row_pbm: '本模型', row_mx: 'Mixbox 参考', row_spec: '光谱真值',
+    row_rgb: 'RGB 插值', row_km: 'K–M 显示值',
+    de_ref: '参考', de_na: '—',
+    th_pair: '色对', th_ref: '参考', th_ours: '本模型', th_rgb: 'RGB 插值', th_km: 'K–M（谱）',
+    cat_comp: '互补', cat_mis: '错配', cat_wb: '白黑', cat_sim: '相似', cat_dark: '深色+白',
+    tbl_note: 'α = {a} · 光谱真值列由 {n} 个色对逐一 unmix 得到（已缓存）。',
+    note1_h: '模型',
+    note1_p: '两阶段公式：K–M/Duncan 混色核心 + 修复层。核心作宽带 3×3 矩阵变换、解析 K/S 默认、κ 浓度叠加、互吸收与有理式 R∞；修复层用软角色分配 λ、深色加白门控 <code>g</code>、逐通道幂律目标与十七特征谐波修正。全式不含三角函数与查找表。',
+    note2_h: '对照',
+    note2_p: '<b>RGB 插值</b>是光的加色混合，互补色趋灰。<b>显示值 K–M</b> 把通道值当作反射率叠加，深色加白会被冲淡。<b>光谱真值</b>由 29 个合成颜料光谱（两常数 K–M，带结构按颜料化学、数值标定自 BabelColor ColorChecker 公开光谱）经 Duncan 叠加与 D65 积分得到，任意 RGB 先确定性 unmix 为四主颜料浓度。<b>Mixbox 2.0</b> 在实测颜料光谱训练的七维潜空间内线性混合，是本页参考。',
+    note3_h: '读法',
+    note3_p: 'ΔE00 < 1 不可察觉，1–2 仔细比对可见，2–4 明显，> 4 显著。本模型在深色加白上均值 2.26、最大 7.3；主三集 3.29 / 2.67 / 2.78。全部统计与留出划分见评估页与论文。Mixbox 参考库按 CC BY-NC 4.0 由官方 CDN 加载，仅供研究对照。',
+    foot_left: 'Pigment-Based Mixing · 混色台', foot_eval: '评估套件', foot_paper: '技术论文',
+    mixbox_missing: '参考库未加载（需网络）',
+    presets: {
+      base: ['白','灰','黑','红','橙','黄','绿','青','蓝','紫'],
+      tint: ['镉黄','群青','朱红','翠绿','品红','橙红','青','白']
+    }
+  }
+};
+
+let LANG = (() => {
+  const q = new URLSearchParams(location.search).get('lang');
+  if (q) return q === 'zh' ? 'zh' : 'en';
+  try { if (localStorage.getItem('pbm-lang') === 'zh') return 'zh'; } catch (e) {}
+  return 'en';
+})();
+const t = k => (TEXT[LANG][k] !== undefined ? TEXT[LANG][k] : TEXT.en[k]);
+
+/* ---------- 基础工具 ---------- */
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const lerp = (a, b, t) => a + (b - a) * t;
+const lerp = (a, b, tt) => a + (b - a) * tt;
+const mixLerp = (b, t2, a) => [lerp(b[0],t2[0],a), lerp(b[1],t2[1],a), lerp(b[2],t2[2],a)];
+const kmDual = (b, t2, a) => {
+  const K = v => { const d = 1 - v; return d * d / 2; };
+  const S = v => Math.max(v, 0.005);
+  const R = k => 1 + k - Math.sqrt(k * k + 2 * k);
+  const ch = c => R((K(b[c]) + (K(t2[c]) - K(b[c])) * a) / (S(b[c]) + (S(t2[c]) - S(b[c])) * a));
+  return [ch(0), ch(1), ch(2)];
+};
 const HEX2RGB = h => [parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3,5),16)/255, parseInt(h.slice(5,7),16)/255];
 const RGB2HEX = rgb => '#' + rgb.map(v => Math.round(clamp(v,0,1)*255).toString(16).padStart(2,'0')).join('').toUpperCase();
+const css = rgb => 'rgb(' + rgb.map(v => Math.round(clamp(v,0,1)*255)).join(',') + ')';
 
-/* ===== ΔE00（CIEDE2000，Sharma/Wu/Dalal 2005，当前行业标准；ΔE<1 不可感知） ===== */
+/* ---------- CIEDE2000 ---------- */
 const SRGB2LIN = c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-const LABF = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+const LABF = tt => tt > 0.008856 ? Math.cbrt(tt) : 7.787 * tt + 16 / 116;
 function rgbToLab(rgb){
   const r = SRGB2LIN(rgb[0]), g = SRGB2LIN(rgb[1]), b = SRGB2LIN(rgb[2]);
   let x = 0.4124564*r + 0.3575761*g + 0.1804375*b;
@@ -33,10 +105,6 @@ function rgbToLab(rgb){
   const fx = LABF(x), fy = LABF(y), fz = LABF(z);
   return [116*fy - 16, 500*(fx - fy), 200*(fy - fz)];
 }
-const de76 = (a, b) => {
-  const x = rgbToLab(a), y = rgbToLab(b);
-  return Math.hypot(x[0]-y[0], x[1]-y[1], x[2]-y[2]);
-};
 const D2R = Math.PI / 180;
 function deltaE2000(lab1, lab2){
   const [L1,a1,b1] = lab1, [L2,a2,b2] = lab2;
@@ -72,435 +140,347 @@ function deltaE2000(lab1, lab2){
   return Math.sqrt(tL*tL + tC*tC + tH*tH + RT*tC*tH);
 }
 const de00 = (a, b) => deltaE2000(rgbToLab(a), rgbToLab(b));
-// mixbox.js（CC BY-NC 4.0，官方 CDN 异步加载，仅研究对照；不阻塞页面渲染）
-let mixboxRef = null;
-let mixboxReady = false;
+
+/* ---------- 参考模型：Mixbox（异步） ---------- */
+let mixboxFn = null;
 function loadMixbox(){
   const s = document.createElement('script');
   s.src = 'https://scrtwpns.com/mixbox.js';
   s.async = true;
   s.onload = () => {
     if (typeof mixbox !== 'undefined' && typeof mixbox.lerpFloat === 'function'){
-      mixboxRef = (b, t, a) => mixbox.lerpFloat(b, t, a);
-      mixboxReady = true;
-      refresh();
-      buildTestTable();
+      mixboxFn = (b, t2, a) => mixbox.lerpFloat(b, t2, a);
+      rebuildStrips();
+      renderStress();
     }
   };
-  s.onerror = () => {};
   document.head.appendChild(s);
 }
+const refMix = (b, t2, a) => mixboxFn ? mixboxFn(b, t2, a) : null;
 
-/* ===== HSL（色相/饱和度反解与合成，色轮指示用） ===== */
-function rgb2hsl([r,g,b]){
-  const M = Math.max(r,g,b), m = Math.min(r,g,b), d = M - m;
-  let h = 0;
-  if (d > 1e-9){
-    if (M === r) h = 60 * (((g-b)/d) % 6);
-    else if (M === g) h = 60 * ((b-r)/d + 2);
-    else h = 60 * ((r-g)/d + 4);
-  }
-  if (h < 0) h += 360;
-  const l = (M + m) / 2;
-  const s = d < 1e-9 ? 0 : d / (1 - Math.abs(2*l - 1));
-  return [h, s, l];
-}
-function hsl2rgb([h,s,l]){
-  h = ((h % 360) + 360) % 360;
-  const c = (1 - Math.abs(2*l - 1)) * s;
-  const hp = h/60, x = c*(1-Math.abs(hp%2-1)), m = l - c/2;
-  const rgb = hp<1 ? [c,x,0] : hp<2 ? [x,c,0] : hp<3 ? [0,c,x] : hp<4 ? [0,x,c] : hp<5 ? [x,0,c] : [c,0,x];
-  return rgb.map(v => v + m);
-}
-
-/* ===== 标准 Yurmby 色轮（Gurney/Sanford 六主色，均布 60°） ===== */
-// Y-R-M-B-C-G 自顶顺时针：黄0° 红60° 品红120° 蓝180° 青240° 绿300°。
-// 它是标准 RGB 色相环的镜像等距（f(x) = (60−x) mod 360）：
-// 非对径对插值与标准环等价；对径对（恰 180°）因镜像方向取反，中点与标准环相反。
-const y2r = h => ((60 - h) % 360 + 360) % 360;   // Yurmby 刻度 → RGB 色相
-const r2y = h => ((60 - h) % 360 + 360) % 360;   // RGB 色相 → Yurmby 刻度（同为镜像，自逆）
-
-/* ===== mix methods ===== */
-const mixLerp = (a,b,t) => [lerp(a[0],b[0],t), lerp(a[1],b[1],t), lerp(a[2],b[2],t)];
-const mat3Inv = m => {
-  const [a, b, c, d, e, f, g, h, i] = m;
-  const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
-  const det = a * A + b * B + c * C;
-  return [
-    A / det, -(b * i - c * h) / det, (b * f - c * e) / det,
-    B / det, (a * i - c * g) / det, -(a * f - c * d) / det,
-    C / det, -(a * h - b * g) / det, (a * e - b * d) / det
-  ];
-};
-const PRESETS = {
-  base: [['白','#F2F2EF'],['灰','#8A8A93'],['黑','#141417'],['红','#E23B3B'],['橙','#F07A2A'],['黄','#F0C94B'],['绿','#3FA76F'],['青','#3AA8B8'],['蓝','#3B6FE0'],['紫','#8A5BE0']],
-  tint: [['镉黄','#FFD61A'],['群青','#2E5EFF'],['朱红','#E8321F'],['翠绿','#00B359'],['品红','#E33BA8'],['橙红','#FF7A1A'],['青','#00D5C0'],['白','#FFFFFF']]
-};
-function buildDots(containerId, palette, inputId, onPick){
-  const el = $(containerId);
-  palette.forEach(([name, hex]) => {
-    const b = document.createElement('button');
-    b.className = 'dot-btn'; b.style.background = hex; b.title = name;
-    b.onclick = () => { $(inputId).value = hex; setActive(el, b); onPick(); };
-    el.appendChild(b);
-  });
-}
-function setActive(el, btn){
-  el.querySelectorAll('.dot-btn').forEach(x => x.classList.remove('on'));
-  btn.classList.add('on');
-}
-
-/* ===== wheel ===== */
-const cv = $('wheel'), ctx = cv.getContext('2d');
-const W = cv.width, CX = W/2, R = 270, RING = 44;   // 680 canvas, css 340 max
-const ring = document.createElement('canvas');
-ring.width = ring.height = W;
-(function drawRing(){
-  const rc = ring.getContext('2d');
-  // 伊登式 Yurmby 色轮：Yurmby 刻度 yb 处绘制颜色 y2r(yb)
-  // canvas 角度：顶部 = −90°，顺时针 = 角度增加 → 位置 = (刻度 − 90)°
-  for (let yb = 0; yb < 360; yb++){
-    const rgb = hsl2rgb([y2r(yb + 0.5), 1, 0.5]);
-    rc.strokeStyle = `rgb(${rgb.map(v => Math.round(v*255)).join(',')})`;
-    rc.lineWidth = RING;
-    rc.beginPath();
-    rc.arc(CX, CX, R, (yb - 90) * Math.PI/180, (yb + 1 - 90) * Math.PI/180);
-    rc.stroke();
-  }
-  // ticks: 12 minor (Yurmby 30° 步进) + 6 major (六主色 60°)；位置 = Yurmby 刻度
-  const YR_NAMES = {0:'黄',60:'红',120:'品红',180:'蓝',240:'青',300:'绿'};
-  for (let i = 0; i < 12; i++){
-    const yurm = i * 30;
-    const isMain = yurm % 60 === 0;
-    const rad = (yurm - 90) * Math.PI/180;
-    const r0 = R + RING/2, r1 = r0 + (isMain ? 15 : 9);
-    rc.strokeStyle = isMain ? 'rgba(236,236,239,.75)' : 'rgba(236,236,239,.3)';
-    rc.lineWidth = isMain ? 2 : 1;
-    rc.beginPath();
-    rc.moveTo(CX + Math.cos(rad)*r0, CX + Math.sin(rad)*r0);
-    rc.lineTo(CX + Math.cos(rad)*r1, CX + Math.sin(rad)*r1);
-    rc.stroke();
-    if (isMain){
-      rc.fillStyle = '#6b6b76';
-      rc.font = '28px sans-serif';
-      rc.textAlign = 'center'; rc.textBaseline = 'middle';
-      rc.fillText(YR_NAMES[yurm], CX + Math.cos(rad)*(r1 + 26), CX + Math.sin(rad)*(r1 + 26));
-    }
-  }
-})();
-function drawWheel(mixColor, mixHue, baseHue, tintHue, hasBase, hasTint){
-  ctx.clearRect(0, 0, W, W);
-  ctx.drawImage(ring, 0, 0);
-  const dot = (hue, rr, size) => {
-    const rad = (r2y(hue) - 90) * Math.PI/180;         // RGB 色相 → Yurmby 刻度位置
-    ctx.beginPath();
-    ctx.arc(CX + Math.cos(rad)*rr, CX + Math.sin(rad)*rr, size, 0, 7);
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(12,12,14,.85)';
-    ctx.stroke();
-  };
-  if (hasBase) dot(baseHue, R - 26, 10);
-  if (hasTint) dot(tintHue, R + 26, 10);
-  if (mixHue != null){
-    const rad = (mixHue - 90) * Math.PI/180;           // 混合色相已为 Yurmby 刻度，直接定位
-    const x = CX + Math.cos(rad)*R, y = CX + Math.sin(rad)*R;
-    ctx.beginPath();
-    ctx.arc(x, y, 13, 0, 7);
-    ctx.fillStyle = '#e0a84c';
-    ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = '#fff';
-    ctx.stroke();
-  }
-  // center dish（混合色实况）
-  ctx.beginPath();
-  ctx.arc(CX, CX, 30, 0, 7);
-  ctx.fillStyle = RGB2HEX(mixColor || [1,1,1]);
-  ctx.fill();
-  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.85)';
-  ctx.stroke();
-}
-
-/* ===== 测试对照表（T2 压力对 × 3α × 全模型） =====
- * 只在页面初始化与 mixbox 加载完成时构建（不随 refresh 重建）；
- * KM 物理列（unmix 迭代，每格 ~11ms）经分片异步填充并缓存，避免阻塞交互。 */
-const TEST_ALPHAS = [0.25, 0.5, 0.75];
-/* KM(光谱真值)：unmix 结果按颜色缓存（拖动滑块只变 α 时 base/tint 不变，
- * unmix 迭代不再重算，只做快速光谱混合 + 残差补光 → 更新即时） */
+/* ---------- 光谱真值：unmix + 两常数 K–M ---------- */
 const unmixCache = new Map();
-const unmixCached = rgb => {
-  const key = rgb[0].toFixed(4) + ',' + rgb[1].toFixed(4) + ',' + rgb[2].toFixed(4);
+const unmix = rgb => {
+  const key = rgb.map(v => v.toFixed(4)).join();
   let u = unmixCache.get(key);
-  if (!u) { u = Spectral.unmixRgb(rgb, { sweeps: 3, seed: 0xC0FFEE }); unmixCache.set(key, u); }
+  if (!u){ u = Spectral.unmixRgb(rgb, { sweeps: 3, seed: 0xC0FFEE }); unmixCache.set(key, u); }
   return u;
 };
-const specMixFn = (b, t, a) => {
+const specMix = (b, t2, a) => {
   if (typeof Spectral === 'undefined') return null;
-  const ca = unmixCached(b), cb = unmixCached(t);
-  const conc = ca.conc.map((v, i) => (1 - a) * v + a * cb.conc[i]);
+  const cb = unmix(b), ct = unmix(t2);
+  const conc = cb.conc.map((v, i) => (1 - a) * v + a * ct.conc[i]);
   const out = Spectral.spectralMixConcs(conc, {});
-  const w1 = Math.exp(-ca.de00 / 5), w2 = Math.exp(-cb.de00 / 5);
-  const w1e = w1 + (1 - w1) * Math.pow(1 - a, 4), w2e = w2 + (1 - w2) * Math.pow(a, 4);
-  const res = out.rgb.map((v, c) => {
-    const r1 = b[c] - ca.rgb[c], r2 = t[c] - cb.rgb[c];
-    return Math.max(0, Math.min(1, v + (1 - a) * r1 * w1e + a * r2 * w2e));
-  });
-  return res;
+  const wb = Math.exp(-cb.de00 / 5), wt = Math.exp(-ct.de00 / 5);
+  const wb2 = wb + (1 - wb) * Math.pow(1 - a, 4), wt2 = wt + (1 - wt) * Math.pow(a, 4);
+  return out.rgb.map((v, c) => clamp(v + (1 - a) * (b[c] - cb.rgb[c]) * wb2 + a * (t2[c] - ct.rgb[c]) * wt2, 0, 1));
 };
-const specCache = new Map();
-const specMixCached = (b, t, a) => {
-  const key = a + '|' + b[0] + ',' + b[1] + ',' + b[2] + '|' + t[0] + ',' + t[1] + ',' + t[2];
-  if (specCache.has(key)) return specCache.get(key);
-  const v = specMixFn(b, t, a);
-  specCache.set(key, v);
-  return v;
+
+/* ---------- 色板与色带 ---------- */
+const PRESET_HEX = {
+  base: ['#F2F2EF','#8A8A93','#141417','#E23B3B','#F07A2A','#F0C94B','#3FA76F','#3AA8B8','#3B6FE0','#8A5BE0'],
+  tint: ['#FFD61A','#2E5EFF','#E8321F','#00B359','#E33BA8','#FF7A1A','#00D5C0','#FFFFFF']
 };
-const TEST_MODELS = [['我们的方法', mixPigment], ['RGB', mixLerp], ['KM光谱基准', specMixFn]];
-const TEST_PAIRS = [
-  ['互补', '#E8321F', '#00D5C0'], ['互补', '#FFD61A', '#2E5EFF'], ['互补', '#E33BA8', '#00B359'],
-  ['RYB错配', '#E8321F', '#00B359'], ['RYB错配', '#2E5EFF', '#FF7A1A'], ['RYB错配', '#E8321F', '#2E5EFF'],
-  ['RYB错配', '#FFD61A', '#00B359'], ['RYB错配', '#FFD61A', '#00D5C0'], ['RYB错配', '#E33BA8', '#00D5C0'],
-  ['白黑混合', '#E8321F', '#FFFFFF'], ['白黑混合', '#2E5EFF', '#FFFFFF'], ['白黑混合', '#FFD61A', '#FFFFFF'],
-  ['白黑混合', '#E8321F', '#000000'], ['白黑混合', '#2E5EFF', '#000000'], ['白黑混合', '#00B359', '#000000'],
-  ['相似色', '#E8321F', '#FF7A1A'], ['相似色', '#FFD61A', '#FF7A1A'], ['相似色', '#2E5EFF', '#8A5BE0'], ['相似色', '#00B359', '#00D5C0'],
-  ['深色+白', '#0D1B44', '#FFFFFF'], ['深色+白', '#000080', '#FFFFFF'], ['深色+白', '#001B75', '#FFFFFF'],
-  ['深色+白', '#001E80', '#FFFFFF'], ['深色+白', '#080248', '#FFFFFF'], ['深色+白', '#5F1708', '#FFFFFF'],
-  ['深色+白', '#5E0F1A', '#FFFFFF'], ['深色+白', '#4A3A05', '#FFFFFF'], ['深色+白', '#280501', '#FFFFFF'],
-  ['深色+白', '#250903', '#FFFFFF'], ['深色+白', '#8E1F0A', '#FFFFFF'], ['深色+白', '#005A32', '#FFFFFF'],
-  ['深色+白', '#2A0A5E', '#FFFFFF'], ['深色+白', '#6E0B4A', '#FFFFFF'], ['深色+白', '#7A3B00', '#FFFFFF'],
-  ['深色+白', '#00585E', '#FFFFFF']
+
+const ROWS = [
+  { key:'pbm',  label:'row_pbm',  fn:(b,t2,a) => mixPbm(b,t2,a), ours:true },
+  { key:'mx',   label:'row_mx',   fn:(b,t2,a) => refMix(b,t2,a) },
+  { key:'spec', label:'row_spec', fn:(b,t2,a) => specMix(b,t2,a) },
+  { key:'rgb',  label:'row_rgb',  fn:mixLerp },
+  { key:'km',   label:'row_km',   fn:kmDual }
 ];
-const gradClass = d => d < 1 ? 'de-lt2' : d < 2.5 ? 'de-2to5' : 'de-gt5';
-function buildTestTable(){
-  const tbl = $('testTbl');
-  const thead = tbl.querySelector('thead'), tbody = tbl.querySelector('tbody');
-  thead.innerHTML = ''; tbody.innerHTML = '';
-  const h1 = document.createElement('tr');
-  const h1lbl = document.createElement('th');
-  h1lbl.className = 'lbl'; h1lbl.rowSpan = 2; h1lbl.textContent = '色对';
-  h1.appendChild(h1lbl);
-  for (const a of TEST_ALPHAS){
-    const th = document.createElement('th');
-    th.colSpan = 5; th.textContent = 'α=' + a.toFixed(2);
-    h1.appendChild(th);
+
+const state = { base: HEX2RGB('#F2F2EF'), tint: HEX2RGB('#FFD61A'), alpha: 0.5, sel: { base: 0, tint: 0 } };
+const SAMPLES = 181;
+const nodes = new Map();
+
+function buildRows(){
+  const host = $('rows');
+  host.innerHTML = '';
+  for (const r of ROWS){
+    const row = document.createElement('div');
+    row.className = 'row' + (r.ours ? ' is-ours' : '');
+    row.innerHTML = '<span class="name"></span><canvas></canvas><span class="de"></span>';
+    row.querySelector('.name').textContent = t(r.label);
+    host.appendChild(row);
+    nodes.set(r.key, { row, canvas: row.querySelector('canvas'), de: row.querySelector('.de') });
   }
-  thead.appendChild(h1);
-  const h2 = document.createElement('tr');
-  for (let i = 0; i < TEST_ALPHAS.length; i++){
-    const thRef = document.createElement('th');
-    thRef.textContent = 'Mixbox 参考';
-    thRef.style.color = 'var(--accent)';
-    h2.appendChild(thRef);
-    for (const [name] of TEST_MODELS){
-      const th = document.createElement('th');
-      th.textContent = name;
-      if (name === '我们的方法') th.style.color = 'var(--accent)';
-      h2.appendChild(th);
-    }
+}
+function relabelRows(){
+  for (const r of ROWS){
+    const n = nodes.get(r.key);
+    if (n) n.row.querySelector('.name').textContent = t(r.label);
   }
-  thead.appendChild(h2);
-  // 摘要行：每分类均值
-  const cats = [];
-  for (const [cat, hb, ht] of TEST_PAIRS){
-    let c = cats.find(x => x.name === cat);
-    if (!c){ c = { name: cat, pairs: [] }; cats.push(c); }
-    c.pairs.push([hb, ht]);
+}
+
+function colorsAt(row){
+  const out = new Array(SAMPLES);
+  for (let i = 0; i < SAMPLES; i++){
+    const a = i / (SAMPLES - 1);
+    const c = row.fn(state.base, state.tint, a);
+    out[i] = c || null;
   }
-  const catSumTds = [];   // 记录 KM 物理摘要格（分片完成后填充）
-  for (const c of cats){
-    const tr = document.createElement('tr');
-    tr.className = 'sum';
-    const lbl = document.createElement('td');
-    lbl.className = 'lbl'; lbl.textContent = c.name + ' 均值';
-    tr.appendChild(lbl);
-    for (const a of TEST_ALPHAS){
-      const tdRef = document.createElement('td');
-      tdRef.textContent = '—';
-      tdRef.className = 'ref';
-      tr.appendChild(tdRef);
-      let mi = 0;
-      for (const [name, fn] of TEST_MODELS){
-        const td = document.createElement('td');
-        if (name === '我们的方法') td.className = 'ours';
-        if (name === 'KM光谱基准'){ catSumTds.push({ td, pairs: c.pairs, a }); td.textContent = '…'; }
-        else if (mixboxRef){
-          let sum = 0;
-          for (const [hb, ht] of c.pairs){
-            const b = HEX2RGB(hb), t = HEX2RGB(ht);
-            sum += de00(fn(b, t, a), mixboxRef(b, t, a));
-          }
-          const mean = sum / c.pairs.length;
-          td.textContent = mean.toFixed(1);
-          td.classList.add(gradClass(mean));
-        } else td.textContent = '—';
-        tr.appendChild(td);
-        mi++;
-      }
-    }
-    tbody.appendChild(tr);
+  return out;
+}
+
+function paintRow(key, colors){
+  const n = nodes.get(key); if (!n) return;
+  const cv = n.canvas, dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.max(1, cv.clientWidth), h = Math.max(1, cv.clientHeight);
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const step = w / SAMPLES;
+  for (let i = 0; i < SAMPLES; i++){
+    const c = colors[i];
+    if (!c) continue;
+    ctx.fillStyle = css(c);
+    ctx.fillRect(Math.floor(i * step), 0, Math.ceil(step) + 1, h);
   }
-  // 逐对
-  const tasks = [];   // { td, b, t, a, pair, cat } KM 物理格任务
-  for (const [cat, hb, ht] of TEST_PAIRS){
-    const tr = document.createElement('tr');
-    const lbl = document.createElement('td');
-    lbl.className = 'lbl';
-    lbl.innerHTML = '<span class="sw-pair"><span class="swt" style="background:' + hb + '"></span><span class="swt" style="background:' + ht + '"></span></span><span style="font-family:var(--mono);font-size:11px">' + hb + ' + ' + ht + '</span> <span style="color:var(--faint);font-size:10px">' + cat + '</span>';
-    tr.appendChild(lbl);
-    const b = HEX2RGB(hb), t = HEX2RGB(ht);
-    for (const a of TEST_ALPHAS){
-      const tdRef = document.createElement('td');
-      tdRef.className = 'ref';
-      tdRef.title = 'Mixbox 参考';
-      if (mixboxRef){
-        const ref = mixboxRef(b, t, a);
-        tdRef.innerHTML = '<span class="cell"><span class="swt" style="background:' + RGB2HEX(ref) + '"></span></span>';
-      } else tdRef.textContent = '—';
-      tr.appendChild(tdRef);
-      let mi = 0;
-      for (const [name, fn] of TEST_MODELS){
-        const td = document.createElement('td');
-        if (name === '我们的方法') td.className = 'ours';
-        if (name === 'KM光谱基准'){
-          td.innerHTML = '<span class="cell"><span class="swt" style="background:var(--bg-3)"></span>…</span>';
-          tasks.push({ td, b, t, a });
-        }
-        else if (mixboxRef){
-          const m = fn(b, t, a);
-          const ref = mixboxRef(b, t, a);
-          const d = de00(m, ref);
-          td.innerHTML = '<span class="cell"><span class="swt" style="background:' + RGB2HEX(m) + '"></span>' + d.toFixed(1) + '</span>';
-          td.classList.add(gradClass(d));
-        } else td.textContent = '—';
-        tr.appendChild(td);
-        mi++;
-      }
-    }
-    tbody.appendChild(tr);
+  if (colors.some(c => !c)){
+    ctx.fillStyle = 'rgba(241,242,238,.86)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#C9CEC6'; ctx.lineWidth = 1;
+    for (let x = -h; x < w; x += 9){ ctx.beginPath(); ctx.moveTo(x, h); ctx.lineTo(x + h, 0); ctx.stroke(); }
+    ctx.fillStyle = '#828B90'; ctx.font = '11px ' + getComputedStyle(document.body).fontFamily;
+    ctx.fillText(t('mixbox_missing'), 10, h / 2 + 4);
   }
-  // KM 物理列：分片异步填充（每片 ~10ms，避免阻塞；结果缓存）
-  const fillCell = task => {
-    const rgb = specMixCached(task.b, task.t, task.a);
-    if (rgb && mixboxRef){
-      const ref = mixboxRef(task.b, task.t, task.a);
-      const d = de00(rgb, ref);
-      task.td.innerHTML = '<span class="cell"><span class="swt" style="background:' + RGB2HEX(rgb) + '"></span>' + d.toFixed(1) + '</span>';
-      task.td.classList.add(gradClass(d));
-    } else if (rgb){
-      task.td.innerHTML = '<span class="cell"><span class="swt" style="background:' + RGB2HEX(rgb) + '"></span></span>';
-    } else {
-      task.td.textContent = '—';
-    }
+}
+
+let stripCache = new Map();
+
+function rebuildStrips(){
+  stripCache = new Map();
+  for (const r of ROWS){
+    const cs = colorsAt(r);
+    stripCache.set(r.key, cs);
+    paintRow(r.key, cs);
+  }
+  updateSample();
+}
+
+function currentAt(key){
+  const cs = stripCache.get(key);
+  if (!cs) return null;
+  return cs[Math.round(state.alpha * (SAMPLES - 1))];
+}
+
+function updateSample(){
+  const ref = currentAt('mx');
+  const ours = currentAt('pbm');
+  for (const r of ROWS){
+    const n = nodes.get(r.key);
+    if (r.key === 'mx'){ n.de.textContent = t('de_ref'); n.de.className = 'de ref'; continue; }
+    const c = currentAt(r.key);
+    if (!c || !ref){ n.de.textContent = t('de_na'); n.de.className = 'de na'; continue; }
+    n.de.textContent = de00(c, ref).toFixed(2);
+    n.de.className = 'de';
+  }
+
+  const cv = nodes.get('pbm').canvas;
+  const bench = $('bench');
+  const cr = cv.getBoundingClientRect(), br = bench.getBoundingClientRect();
+  $('scrub').style.left = (cr.left - br.left + state.alpha * cr.width) + 'px';
+  $('scrubTag').textContent = 'α ' + state.alpha.toFixed(2);
+
+  const sw = $('specSwatch');
+  sw.style.background = ours ? css(ours) : '#ddd';
+  $('specHex').textContent = ours ? RGB2HEX(ours) : '—';
+  $('specAlpha').textContent = 'α ' + state.alpha.toFixed(2);
+  $('alphaNum').textContent = state.alpha.toFixed(2);
+  if (document.activeElement !== $('alpha')) $('alpha').value = String(state.alpha);
+
+  const b = state.base, t2 = state.tint;
+  $('hexBase').textContent = RGB2HEX(b); $('hexTint').textContent = RGB2HEX(t2);
+  $('baseHex').textContent = RGB2HEX(b); $('tintHex').textContent = RGB2HEX(t2);
+  $('swBase').style.background = css(b); $('swTint').style.background = css(t2);
+}
+
+/* ---------- 交互 ---------- */
+function pointerToAlpha(ev){
+  const cv = nodes.get('pbm').canvas;
+  const r = cv.getBoundingClientRect();
+  return clamp((ev.clientX - r.left) / r.width, 0, 1);
+}
+function bindScrub(){
+  const bench = $('bench');
+  let dragging = false;
+  bench.addEventListener('pointerdown', ev => {
+    if (ev.target.closest('input,button')) return;
+    dragging = true;
+    try { bench.setPointerCapture(ev.pointerId); } catch (e) {}
+    state.alpha = pointerToAlpha(ev); updateSample();
+  });
+  bench.addEventListener('pointermove', ev => {
+    if (!dragging) return;
+    state.alpha = pointerToAlpha(ev); updateSample();
+  });
+  bench.addEventListener('pointerup', () => { dragging = false; });
+  bench.addEventListener('pointercancel', () => { dragging = false; });
+}
+
+function buildPresets(){
+  const mk = (hostId, kind, inputId) => {
+    const host = $(hostId);
+    host.innerHTML = '';
+    const names = TEXT[LANG].presets[kind];
+    PRESET_HEX[kind].forEach((hex, i) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.style.background = hex; b.title = names[i];
+      if (state.sel[kind] === i) b.classList.add('on');
+      b.onclick = () => {
+        state.sel[kind] = i;
+        host.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+        b.classList.add('on');
+        $(inputId).value = hex;
+        state[kind] = HEX2RGB(hex);
+        rebuildStrips();
+      };
+      host.appendChild(b);
+    });
   };
-  const fillSummary = () => {
-    for (const s of catSumTds){
-      if (!mixboxRef){ s.td.textContent = '—'; continue; }
-      let sum = 0, n = 0;
-      for (const [hb, ht] of s.pairs){
-        const rgb = specCache.get(s.a + '|' + HEX2RGB(hb).join(',') + '|' + HEX2RGB(ht).join(','));
-        if (rgb){ sum += de00(rgb, mixboxRef(HEX2RGB(hb), HEX2RGB(ht), s.a)); n++; }
-      }
-      s.td.textContent = n ? (sum / n).toFixed(1) : '—';
-    }
-  };
-  let idx = 0;
-  const slice = () => {
+  mk('basePresets', 'base', 'baseColor');
+  mk('tintPresets', 'tint', 'tintColor');
+}
+
+/* ---------- 压力对表格 ---------- */
+const CAT = { comp:'cat_comp', mis:'cat_mis', wb:'cat_wb', sim:'cat_sim', dark:'cat_dark' };
+const PAIRS = [
+  ['comp','#E8321F','#00D5C0'], ['comp','#FFD61A','#2E5EFF'], ['comp','#E33BA8','#00B359'],
+  ['mis','#E8321F','#00B359'], ['mis','#2E5EFF','#FF7A1A'], ['mis','#E8321F','#2E5EFF'],
+  ['mis','#FFD61A','#00B359'], ['mis','#FFD61A','#00D5C0'], ['mis','#E33BA8','#00D5C0'],
+  ['wb','#E8321F','#FFFFFF'], ['wb','#2E5EFF','#FFFFFF'], ['wb','#FFD61A','#FFFFFF'],
+  ['wb','#E8321F','#000000'], ['wb','#2E5EFF','#000000'], ['wb','#00B359','#000000'],
+  ['sim','#E8321F','#FF7A1A'], ['sim','#FFD61A','#FF7A1A'], ['sim','#2E5EFF','#8A5BE0'], ['sim','#00B359','#00D5C0'],
+  ['dark','#0D1B44','#FFFFFF'], ['dark','#000080','#FFFFFF'], ['dark','#001B75','#FFFFFF'],
+  ['dark','#001E80','#FFFFFF'], ['dark','#080248','#FFFFFF'], ['dark','#5F1708','#FFFFFF'],
+  ['dark','#5E0F1A','#FFFFFF'], ['dark','#4A3A05','#FFFFFF'], ['dark','#280501','#FFFFFF'],
+  ['dark','#250903','#FFFFFF'], ['dark','#8E1F0A','#FFFFFF'], ['dark','#005A32','#FFFFFF'],
+  ['dark','#2A0A5E','#FFFFFF'], ['dark','#6E0B4A','#FFFFFF'], ['dark','#7A3B00','#FFFFFF'],
+  ['dark','#00585E','#FFFFFF']
+];
+const TBL_ALPHAS = [0.25, 0.5, 0.75];
+let tblAlpha = 0.5;
+
+function cellHTML(color, ref, ours){
+  if (!color || !ref) return '<span class="cell"><span class="sw" style="background:#eee"></span><span class="d">—</span></span>';
+  const d = de00(color, ref);
+  const cls = d < 2.5 ? '' : d < 5 ? ' warn' : ' bad';
+  return '<span class="cell' + (ours ? ' ours' : '') + '">' +
+         '<span class="sw" style="background:' + css(color) + '"></span>' +
+         '<span class="d' + cls + '">' + d.toFixed(2) + '</span></span>';
+}
+
+let stressGen = 0;
+function renderStress(){
+  const gen = ++stressGen;
+  const tbl = $('stressTbl');
+  const head = tbl.querySelector('thead'), body = tbl.querySelector('tbody');
+  head.innerHTML = ''; body.innerHTML = '';
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<th>' + t('th_pair') + '</th><th>' + t('th_ref') + '</th><th>' + t('th_ours') +
+                 '</th><th>' + t('th_rgb') + '</th><th>' + t('th_km') + '</th>';
+  head.appendChild(tr);
+
+  const a = tblAlpha;
+  PAIRS.forEach(([cat, hb, ht], idx) => {
+    const b = HEX2RGB(hb), t2 = HEX2RGB(ht);
+    const ref = refMix(b, t2, a);
+    const ours = mixPbm(b, t2, a);
+    const rgb = mixLerp(b, t2, a);
+    const row = document.createElement('tr');
+    row.innerHTML =
+      '<td><span class="pair"><span class="cat">' + t(CAT[cat]) + '</span>' +
+      '<span class="sw" style="background:' + hb + '"></span>' +
+      '<span class="sw" style="background:' + ht + '"></span></span></td>' +
+      '<td><span class="cell"><span class="sw" style="background:' + (ref ? css(ref) : '#eee') + '"></span></span></td>' +
+      '<td>' + cellHTML(ours, ref, true) + '</td>' +
+      '<td>' + cellHTML(rgb, ref, false) + '</td>' +
+      '<td data-km="' + idx + '"><span class="cell"><span class="sw" style="background:#eee"></span><span class="d">…</span></span></td>';
+    body.appendChild(row);
+  });
+
+  let i = 0;
+  const tick = () => {
+    if (gen !== stressGen) return;
     const t0 = performance.now();
-    while (idx < tasks.length && performance.now() - t0 < 10) fillCell(tasks[idx++]);
-    if (idx < tasks.length){ setTimeout(slice, 0); return; }
-    fillSummary();
+    while (i < PAIRS.length && performance.now() - t0 < 12){
+      const [_, hb, ht] = PAIRS[i];
+      const b = HEX2RGB(hb), t2 = HEX2RGB(ht);
+      const ref = refMix(b, t2, a);
+      const km = specMix(b, t2, a);
+      const cell = body.querySelector('[data-km="' + i + '"]');
+      if (cell) cell.innerHTML = cellHTML(km, ref, false);
+      i++;
+    }
+    if (i < PAIRS.length) setTimeout(tick, 0);
+    else $('stressNote').textContent = t('tbl_note').replace('{a}', a.toFixed(2)).replace('{n}', String(PAIRS.length));
   };
-  setTimeout(slice, 0);
+  setTimeout(tick, 0);
 }
 
-/* ===== refresh ===== */
-function refresh(){
-  base = HEX2RGB($('baseColor').value);
-  tint = HEX2RGB($('tintColor').value);
-  alpha = parseInt($('alpha').value) / 100;
-  $('alphaVal').textContent = Math.round(alpha*100) + '%';
-  $('alpha').style.setProperty('--p', alpha*100 + '%');
-  $('baseHex').textContent = RGB2HEX(base);
-  $('tintHex').textContent = RGB2HEX(tint);
-
-  const r = mixPigment(base, tint, alpha);
-  const hex = RGB2HEX(r);
-  $('result').style.background = hex;
-  $('resultHex').textContent = hex;
-
-  /* KM(光谱真值)：unmix 已按颜色缓存，同步即时计算（α 变化 0.003ms；换色首次 ~13ms） */
-
-  [['swMine', mixPigment], ['swLerp', mixLerp], ['swMx', mixboxRef]]
-    .forEach(([id, fn]) => { if (fn) $(id).style.background = RGB2HEX(fn(base, tint, alpha)); });
-
-  if (mixboxRef){
-    const ref = mixboxRef(base, tint, alpha);
-    $('swMx').style.background = RGB2HEX(ref);
-    $('deMine').textContent = 'ΔE00 ' + de00(mixPigment(base, tint, alpha), ref).toFixed(2);
-    $('deLerp').textContent = 'ΔE00 ' + de00(mixLerp(base, tint, alpha), ref).toFixed(2);
-    $('deMx').textContent = '参考基准';
-  } else {
-    $('swMx').style.background = 'var(--bg-3)';
-    $('deMine').textContent = 'ΔE00 —';
-    $('deLerp').textContent = 'ΔE00 —';
-    $('deMx').textContent = 'mixbox 未加载';
-  }
-
-  /* KM(光谱真值) 同步更新 */
-  let specRgb = null;
-  try { specRgb = specMixFn(base, tint, alpha); }
-  catch (e) { specRgb = null; }
-  if (specRgb){
-    $('swSpec').style.background = RGB2HEX(specRgb);
-    $('deSpec').textContent = '与 Mixbox 差异为结构性，非误差';
-    $('deMinePhys').textContent = mixboxRef
-      ? 'vs 光谱真值 ' + de00(mixPigment(base, tint, alpha), specRgb).toFixed(2) : '';
-  } else {
-    $('swSpec').style.background = 'var(--bg-3)';
-    $('deSpec').textContent = '—';
-    $('deMinePhys').textContent = '';
-  }
-
-  const stops = [];
-  for (let i = 0; i <= 100; i++) stops.push(RGB2HEX(mixPigment(base, tint, i/100)) + ' ' + i + '%');
-  $('ramp').style.background = 'linear-gradient(to right,' + stops.join(',') + ')';
-
-  // 色轮指示：刻度为 Yurmby 标度（0=黄，30°/格）；混合色相取自 mixPigment 输出（S≈0 显示灰）
-  const bs = rgb2hsl(base), ts = rgb2hsl(tint);
-  const hasB = bs[1] > 1e-5, hasT = ts[1] > 1e-5;
-  const ms = rgb2hsl(r);
-  const mY = ms[1] > 0.02 ? r2y(ms[0]) : null;
-  const mGray = ms[1] <= 0.02;
-  $('mBase').textContent = hasB ? Math.round(r2y(bs[0])) + '°' : '—';
-  $('mTint').textContent = hasT ? Math.round(r2y(ts[0])) + '°' : '—';
-  $('mMix').textContent = mY == null ? '—' : (mGray ? '灰' : Math.round(mY) + '°');
-  drawWheel(r, mGray ? null : mY, hasB ? bs[0] : 0, hasT ? ts[0] : 0, hasB, hasT);
+function buildAlphaTabs(){
+  const host = $('alphaTabs');
+  host.innerHTML = '';
+  TBL_ALPHAS.forEach(a => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = 'α ' + a.toFixed(2);
+    if (a === tblAlpha) b.classList.add('on');
+    b.onclick = () => {
+      tblAlpha = a;
+      host.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      renderStress();
+    };
+    host.appendChild(b);
+  });
 }
 
-/* ===== copy ===== */
-let copied = false;
-$('result').onclick = () => {
-  const text = RGB2HEX(mixPigment(base, tint, alpha));
-  const done = () => {
-    const el = $('resultHex');
-    el.textContent = 'copied';
-    setTimeout(() => { el.textContent = text; }, 1100);
-  };
-  if (navigator.clipboard && navigator.clipboard.writeText)
-    navigator.clipboard.writeText(text).then(done).catch(done);
-  else done();
-};
+/* ---------- 语言 ---------- */
+function applyStatic(){
+  document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
+  document.title = LANG === 'zh' ? '混色台 · Pigment-Based Mixing' : 'Mixing bench · Pigment-Based Mixing';
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = t(el.dataset.i18nHtml); });
+  document.querySelectorAll('#lang button').forEach(b => b.classList.toggle('on', b.dataset.lang === LANG));
+  const paper = LANG === 'zh' ? '../docs/color-mixing-algorithm.zh-CN.pdf' : '../docs/color-mixing-algorithm.pdf';
+  document.querySelectorAll('a[data-i18n="nav_paper"], a[data-i18n="foot_paper"]').forEach(a => { a.href = paper; });
+  const brand = document.querySelector('.brand');
+  if (brand) brand.href = LANG === 'zh' ? '../README.zh-CN.md' : '../README.md';
+  $('specSwatch').title = LANG === 'zh' ? '点击复制十六进制' : 'Copy hex';
+}
+function setLang(lang){
+  LANG = lang === 'zh' ? 'zh' : 'en';
+  try { localStorage.setItem('pbm-lang', LANG); } catch (e) {}
+  applyStatic();
+  relabelRows();
+  buildPresets();
+  rebuildStrips();
+  renderStress();
+}
 
-/* ===== bindings ===== */
-buildDots('baseDots', PRESETS.base, 'baseColor', refresh);
-buildDots('tintDots', PRESETS.tint, 'tintColor', refresh);
-setActive($('baseDots'), $('baseDots').firstChild);
-setActive($('tintDots'), $('tintDots').querySelectorAll('.dot-btn')[0]);
-$('baseColor').addEventListener('input', refresh);
-$('tintColor').addEventListener('input', refresh);
-$('alpha').addEventListener('input', refresh);
-refresh();            // 轻量刷新（PBM 自包含，立即响应）
-buildTestTable();     // 测试表仅构建一次；KM 物理列分片异步填充（不阻塞）
-loadMixbox();         // Mixbox 参考异步加载，到达后自动重建表格与 ΔE00
+/* ---------- 启动 ---------- */
+buildRows();
+buildPresets();
+buildAlphaTabs();
+bindScrub();
+applyStatic();
 
+let rz = 0;
+window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(rebuildStrips, 120); });
+$('baseColor').addEventListener('input', e => { state.sel.base = -1; state.base = HEX2RGB(e.target.value); rebuildStrips(); });
+$('tintColor').addEventListener('input', e => { state.sel.tint = -1; state.tint = HEX2RGB(e.target.value); rebuildStrips(); });
+$('alpha').addEventListener('input', e => { state.alpha = parseFloat(e.target.value); updateSample(); });
+$('specSwatch').addEventListener('click', () => {
+  const txt = $('specHex').textContent;
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt);
+});
+$('lang').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-lang]');
+  if (b) setLang(b.dataset.lang);
+});
 
+rebuildStrips();
+renderStress();
+loadMixbox();

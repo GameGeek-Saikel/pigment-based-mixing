@@ -4,9 +4,9 @@
  * 只含混色公式本身（论文 §3 两阶段公式）：
  *   阶段 1 K–M 混色核心（§3.3）：M₃ 宽带矩阵 → K/S 解析默认 → κ 浓度叠加
  *     → 互吸收 β → 有理 R∞ → M₃⁻¹；混色比例经 φ_core 端点压缩（φ 动态进度）。
- *   阶段 2 修复层（§3.4）：λ 软角色分配（EW=0.08）→ 深白门 g = σₖ(w−0.3706)·σₖ(M)·σₖ(maxd−0.0656)
+ *   阶段 2 修复层（§3.4）：λ 软角色分配（EW=0.08）→ 深白门 g = σₖ(w−0.37375181)·σₖ(M)·σₖ(maxd−0.06479933)
  *     → 逐通道幂律目标 T（软阶跃阶梯 + RES 通道残差 + CPL/KC 耦合 + 族方向响应）
- *     → γ 谐波修正（19 特征模板 × 27 系数，双侧色度软衰减）。
+ *     → γ 谐波修正（17 特征无三角比值模板 × 51 系数，双侧色度软衰减）。
  * 不含任何验证/测试代码（色度度量、参考模型、随机生成器等见 demo/ 页面与 tools/）。
  *
  * 浏览器：<script src="color-mixing.js"></script> → window.ColorMixing
@@ -27,18 +27,19 @@
 /* ===== PBM：颜料基混色（两阶段公式，论文 §3） =====
  * 阶段 1 K–M 混色核心（§3.3）：M₃ 宽带矩阵 → K/S 解析默认 → κ 浓度叠加
  *   → 互吸收 β → 有理 R∞ → M₃⁻¹；混色比例经 φ_core 端点压缩（φ 动态进度，§3.3）。
- * 阶段 2 修复层（§3.4）：λ 软角色分配（EW=0.08）→ 深白门 g = σₖ(w−0.3706)·σₖ(M)·σₖ(maxd−0.0656)
- *   （斜率共享 k=12.584001；带上沿已随迭代 13 惰性移除）→ 逐通道幂律目标 T
- *   （q = 软阶跃阶梯（B/G 族，t₁=0.0463/t₂=0.2493）+ RES 通道残差 + CPL/KC 耦合 + 族方向响应）
- *   → γ 谐波修正 γ̂(V)·cSat·(1−g)·4a(1−a)·h(a)（19 特征模板 × 27 系数，双侧色度软衰减）。
- * 指标（seed=20260808）：T5 2.407/6.1、T1 3.844、T2 3.244、T3 2.996、T5E 2.353/9.5、
- *   tail 1.713、留出 T3 2.895–3.066、T5-heldout 2.607；α=0/1 恒等、交换对称 3.3e-16。
+ * 阶段 2 修复层（§3.4）：λ 软角色分配（EW=0.08）→ 深白门 g = σₖ(w−0.37375181)·σₖ(M)·σₖ(maxd−0.06479933)
+ *   （斜率共享 k=11.01639450；带上沿已随迭代 13 惰性移除）→ 逐通道幂律目标 T
+ *   （q = 软阶跃阶梯（B/G 族，t₁=0.04350222/t₂=0.26436295）+ RES 通道残差 + CPL/KC 耦合 + 族方向响应）
+ *   → γ 谐波修正 γ̂(V)·cSat·(1−g)·4a(1−a)·h(a)（17 特征无三角比值模板 × 51 系数，双侧色度软衰减）。
+ * resE 二次包络（C1）取代原三段折线；γ 无三角函数输入。
+ * 指标（seed=20260808）：T5 2.258/7.3、T1 3.286/15.0、T2 2.667、T3 2.777、T5E 2.441/9.5、
+ *   tail 1.678、留出 T3 2.719–2.852、T5-heldout 2.377；α=0/1 恒等、交换对称 6.7e-16。
  */
 /* ===== PBM 优化参考实现（论文 §3；demo↔eval 逐位一致） =====
- * 与初版数值等价（max RGB diff 2.2e-16）；优化：M₃/M₃⁻¹ 手写展开、
+ * 实现优化：M₃/M₃⁻¹ 手写展开、
  * φ 快速路径内联、幂律目标展开（去 pre 对象与逐通道函数调用）、
- * γ 谐波零贡献提前退出（cSat/hA/gSup）、倍角公式降三角次数（8→4）、
- * 通道值极值/色相 hue() 手写展开。 */
+ * γ 谐波零贡献提前退出（cSat/hA/gSup）、
+ * γ 谐波改用无三角比值特征（消去 4 次三角函数与 1 次 log）；resE 改二次包络（C1）。 */
 const mat3Inv = m => {
   const [a, b, c, d, e, f, g, h, i] = m;
   const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
@@ -54,8 +55,8 @@ const PBM_M = [0.74523981, 0.30403013, -0.04926994, 0, 0.74093256, 0.25906744, 0
 const PBM_MI = mat3Inv(PBM_M);
 const PBM_BETA = [-0.69372345, -0.48397409, -0.24977842];
 const PBM_EPS = 0.00157634;
-const PBM_PW_RES = [0, -0.25693718, -0.25693718];
-const PBM_PW_CPL = 0.43251363, PBM_PW_KC = 4.86795929;
+const PBM_PW_RES = [0, -0.24164942, -0.24164942];
+const PBM_PW_CPL = 0.42818849, PBM_PW_KC = 4.13539205;
 const PBM_PW_RD = [-0.28030789, -0.31011215, 0.33194666, -1.19791733, -0.45218018, 1.71390058];
 const PBM_PW_RTH = 0.21929798;
 const PBM_PW_BD_R = 0.40713961;
@@ -63,7 +64,7 @@ const PBM_PW_BD_G = [-0.08390816, 0.76274462];
 const PBM_PW_GD_R = [-0.2367074, 0.72220875];
 const PBM_PW_GD_B = [-0.30067864, 1.03098891];
 const PBM_EW = 0.08;
-const PBM_PHI_P = 2.31336, PBM_PHI_W = PBM_EW;
+const PBM_PHI_P = 1.96522814, PBM_PHI_W = PBM_EW;
 function phiLow(x) {
   if (x >= PBM_PHI_W) return x;
   const u = clamp(x / PBM_PHI_W, 0, 1);
@@ -108,9 +109,9 @@ function mixPbmCore(base, tint, a) {
   ];
 }
 
-/* c01 = clamp01；ck = σₖ(k=12.584001)；c8 = σ₈ */
+/* c01 = clamp01；ck = σₖ(k=11.01639450)；c8 = σ₈ */
 const c01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
-const ck = x => { const t = x * 12.584001; return t < 0 ? 0 : t > 1 ? 1 : t; };
+const ck = x => { const t = x * 11.01639450; return t < 0 ? 0 : t > 1 ? 1 : t; };
 const c8 = x => { const t = x * 8; return t < 0 ? 0 : t > 1 ? 1 : t; };
 const ssT = (x, lo, hi) => { const t = c01((x - lo) / (hi - lo)); return t * t * (3 - 2 * t); };
 
@@ -124,26 +125,26 @@ function pbmPwTarget(pig, u, a) {
   const gRed = gR * c8(r - PBM_PW_RTH);
   const gSum = gR + gG + gB;
   const gInv = gSum > 1e-6 ? 1 / gSum : 0;
-  const resE = v => { const t = v * 25; return t < 1 ? 0.9432 - 0.6219 * t : (t < 3 ? 0.4580 - 0.1494 * t : 0); };
+  const resE = v => { const u = 1 - v / 0.14196781; return u > 0 ? 0.83421324 * u * u : 0; };
   /* 通道 0（R） */
-  const s1R = ck(r - 0.04633146), s2R = ck(r - 0.24928142);
-  const pBvR = 0.88024633 + (0.33545176 - 0.88024633) * s1R + (0.19217412 - 0.33545176) * s2R;
-  const pGvR = 0.57387051 + (0.596528 - 0.57387051) * s1R + (0.19217412 - 0.596528) * s2R;
+  const s1R = ck(r - 0.04350222), s2R = ck(r - 0.26436295);
+  const pBvR = 0.91483121 + (0.32538955 - 0.91483121) * s1R + (0.18785981 - 0.32538955) * s2R;
+  const pGvR = 0.57387051 + (0.596528 - 0.57387051) * s1R + (0.18785981 - 0.596528) * s2R;
   let q0 = gSum <= 1e-6 ? (1 + pBvR + pGvR) / 3 : (gB * pBvR + gG * pGvR + gR) * gInv;
   q0 += PBM_PW_CPL * c01(Math.max(g, b) * PBM_PW_KC);
   q0 += gRed * (PBM_PW_RD[0] + PBM_PW_RD[1] * r) + gB * PBM_PW_BD_R + gG * (PBM_PW_GD_R[0] + PBM_PW_GD_R[1] * r);
   /* 通道 1（G） */
-  const s1G = ck(g - 0.04633146), s2G = ck(g - 0.24928142);
-  const pBvG = 0.88024633 + (0.33545176 - 0.88024633) * s1G + (0.19217412 - 0.33545176) * s2G;
-  const pGvG = 0.57387051 + (0.596528 - 0.57387051) * s1G + (0.19217412 - 0.596528) * s2G;
+  const s1G = ck(g - 0.04350222), s2G = ck(g - 0.26436295);
+  const pBvG = 0.91483121 + (0.32538955 - 0.91483121) * s1G + (0.18785981 - 0.32538955) * s2G;
+  const pGvG = 0.57387051 + (0.596528 - 0.57387051) * s1G + (0.18785981 - 0.596528) * s2G;
   let q1 = gSum <= 1e-6 ? (1 + pBvG + pGvG) / 3 : (gB * pBvG + gG * pGvG + gR) * gInv;
   q1 += PBM_PW_RES[1] * resE(g);
   q1 += PBM_PW_CPL * c01(Math.max(r, b) * PBM_PW_KC);
   q1 += gRed * (PBM_PW_RD[2] + PBM_PW_RD[3] * g) + gB * (PBM_PW_BD_G[0] + PBM_PW_BD_G[1] * g);
   /* 通道 2（B） */
-  const s1B = ck(b - 0.04633146), s2B = ck(b - 0.24928142);
-  const pBvB = 0.88024633 + (0.33545176 - 0.88024633) * s1B + (0.19217412 - 0.33545176) * s2B;
-  const pGvB = 0.57387051 + (0.596528 - 0.57387051) * s1B + (0.19217412 - 0.596528) * s2B;
+  const s1B = ck(b - 0.04350222), s2B = ck(b - 0.26436295);
+  const pBvB = 0.91483121 + (0.32538955 - 0.91483121) * s1B + (0.18785981 - 0.32538955) * s2B;
+  const pGvB = 0.57387051 + (0.596528 - 0.57387051) * s1B + (0.18785981 - 0.596528) * s2B;
   let q2 = gSum <= 1e-6 ? (1 + pBvB + pGvB) / 3 : (gB * pBvB + gG * pGvB + gR) * gInv;
   q2 += PBM_PW_RES[2] * resE(b);
   q2 += PBM_PW_CPL * c01(Math.max(r, g) * PBM_PW_KC);
@@ -159,7 +160,7 @@ function pbmRepairDelta(pig, u, aEff, C) {
   const maxd = M - mn;
   const wu = u0 < u1 ? (u0 < u2 ? u0 : u2) : (u1 < u2 ? u1 : u2);
   const w = (mn > wu ? mn : wu);
-  const gate = ck(w - 0.3706311) * ck(M) * ck(maxd - 0.06556298);
+  const gate = ck(w - 0.37375181) * ck(M) * ck(maxd - 0.06479933);
   let d0 = 0, d1 = 0, d2 = 0;
   if (gate > 1e-6) {
     const t = pbmPwTarget(pig, u, aEff);
@@ -172,33 +173,21 @@ function pbmRepairDelta(pig, u, aEff, C) {
   const cSat = ssT(M - mn, 0.02, 0.15) * ssT(um - wu, 0.08, 0.30);
   if (gSup > 1e-9 && hA > 1e-9 && cSat > 1e-9) {
     const gm = 4 * aEff * (1 - aEff) * cSat * gSup * hA;
-    const hueOf = (v0, v1, v2) => {
-      const mx = v0 > v1 ? (v0 > v2 ? v0 : v2) : (v1 > v2 ? v1 : v2);
-      const mnn = v0 < v1 ? (v0 < v2 ? v0 : v2) : (v1 < v2 ? v1 : v2);
-      if (mx - mnn < 1e-9) return 0;
-      let h;
-      if (mx === v0) h = 60 * ((v1 - v2) / (mx - mnn));
-      else if (mx === v1) h = 60 * (2 + (v2 - v0) / (mx - mnn));
-      else h = 60 * (4 + (v0 - v1) / (mx - mnn));
-      return h < 0 ? h + 360 : h;
-    };
-    const hp = hueOf(r, g, b), hu = hueOf(u0, u1, u2);
-    const A = Math.PI / 180;
-    const shp = Math.sin(A * hp), chp = Math.cos(A * hp);
-    const shu = Math.sin(A * hu), chu = Math.cos(A * hu);
-    const s2hp = 2 * shp * chp, c2hp = 2 * chp * chp - 1;
-    const s3hp = shp * (3 - 4 * shp * shp), c3hp = chp * (4 * chp * chp - 3);
-    const s2hu = 2 * shu * chu, c2hu = 2 * chu * chu - 1;
-    const logu = Math.log(u0 + 0.01);
-    const s1hu_pm = shu * c01((M - 0.30) * 12.584);
     const gRp = 0.5 * c8(r - g) + 0.5 * c8(r - b);
     const gBp = 0.5 * c8(b - r) + 0.5 * c8(b - g);
     const gRu = 0.5 * c8(u0 - u1) + 0.5 * c8(u0 - u2);
+    const PC = Math.max(M - mn, 1e-6), UC = Math.max(um - wu, 1e-6);
+    const DR = (r - b) / PC, DG = (g - b) / PC, DCM = (r - g) / PC;
+    const UR = (u0 - u2) / UC, UG = (u1 - u2) / UC, UCM = (u0 - u1) / UC;
     const wUcP = (u0 - u2) * (b - r);
     const dcAbs = u0 > r ? u0 - r : r - u0;
-    d0 += (-0.07339164 + -0.085953 * gBp + 0.1295769 * wu + -0.04714988 * s2hp + 0.12208017 * M + -0.00677685 * logu + -0.03406281 * shu + 0.01174257 * s3hp + 0.02505266 * s1hu_pm + 0.0360914 * gRp + -0.04872395 * r) * gm;
-    d1 += (-0.04704706 + 0.10921572 * wu + -0.06204143 * gRp + -0.02021518 * c2hp + 0.05506322 * um + 0.00698984 * s2hu) * gm;
-    d2 += (-0.04887766 + 0.09651812 * wu + -0.07000325 * mn + 0.02119207 * c3hp + 0.08138486 * um + -0.06336064 * M + 0.01773538 * c2hu + -0.09771287 * wUcP + 0.0736705 * dcAbs + -0.03704948 * gRu) * gm;
+    const LUM = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const LUMU = 0.2126 * u0 + 0.7152 * u1 + 0.0722 * u2;
+    const SPAN = (M - mn) * (um - wu);
+    const OP = 1 - ((M - mn) + (um - wu)) / 2;
+    d0 += (- 0.24945965002914949 * 1 - 0.0045889906868631708 * LUM + 0.0041513551994266139 * (DG * UG) - 0.037580595706759645 * (DCM * UCM) + 0.05450569803891276 * wUcP + 0.099893445837378303 * u2 + 0.25226194627256282 * M + 0.023210943937834599 * DG + 0.15029393775777919 * OP + 0.032309012528158876 * SPAN + 0.030058192159529883 * (DR * UR) + 0.34621806773454422 * mn - 0.57046215673962131 * (M * mn) - 0.0027456565141784021 * LUMU + 0.032089971951832885 * UR - 0.053136286490094019 * dcAbs - 0.029410711164283156 * gRu) * gm;
+    d1 += (- 0.15650536547935953 * 1 + 0.14061150179766091 * LUM - 0.036203528266390395 * (DG * UG) + 0.037350636144765727 * (DCM * UCM) + 0.021745829109720165 * wUcP + 0.023816133495222817 * u2 - 0.064813043910525822 * M - 0.020272883681938206 * DG + 0.1385172056042358 * OP + 0.13327491711885181 * SPAN + 0.012698288999900342 * (DR * UR) + 0.037681776121840031 * mn - 0.055585822793579612 * (M * mn) + 0.037689443255939002 * LUMU + 0.015054100789579432 * UR + 0.021801163240957828 * dcAbs - 0.017675820505782546 * gRu) * gm;
+    d2 += (+ 0.16757082268978754 * 1 - 0.043737477412635554 * LUM + 0.02221282183541292 * (DG * UG) - 0.02131140334204034 * (DCM * UCM) - 0.088939482811690521 * wUcP + 0.059736090003303446 * u2 - 0.093244625666860398 * M - 0.0024207237712253484 * DG - 0.118897820628014 * OP - 0.0806668864815685 * SPAN - 0.018813447483138224 * (DR * UR) - 0.40457566738392031 * mn + 0.51586854870254917 * (M * mn) - 0.018553588391455163 * LUMU + 0.033909706606359974 * UR - 0.018071468054222248 * dcAbs - 0.041487499442177063 * gRu) * gm;
   }
   return [d0, d1, d2];
 }

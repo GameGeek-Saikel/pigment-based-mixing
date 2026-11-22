@@ -1,0 +1,107 @@
+\documentclass[UTF8,11pt,a4paper,fontset=fandol]{ctexart}
+\usepackage[margin=2.35cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs,multirow,array,tabularx}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{siunitx}
+\usepackage{bm}
+\usepackage[ruled,linesnumbered]{algorithm2e}
+\usepackage[hidelinks]{hyperref}
+\usepackage{cleveref}
+
+\graphicspath{{figures/}}
+\sisetup{detect-all,group-digits=false}
+\captionsetup{font=small,labelfont=bf}
+\setlist{nosep}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.8}
+\renewcommand{\textfraction}{0.07}
+\renewcommand{\floatpagefraction}{0.75}
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{5}
+\newtheorem{proposition}{命题}
+
+\DeclareMathOperator{\clamp}{clamp}
+\DeclareMathOperator{\ssf}{ss}
+\newcommand{\cb}{\mathbf{c}_{\mathrm{b}}}
+\newcommand{\ct}{\mathbf{c}_{\mathrm{t}}}
+\newcommand{\vp}{\mathbf{p}}
+\newcommand{\vu}{\mathbf{u}}
+\newcommand{\kbar}{\bar{\kappa}}
+\newcommand{\kstar}{\kappa^{\ast}}
+\newcommand{\Rinf}{R_{\infty}}
+\newcommand{\Mthree}{M_{3}}
+\newcommand{\sigmak}{\sigma_{k}}
+
+\crefname{figure}{图}{图}
+\Crefname{figure}{图}{图}
+\crefname{table}{表}{表}
+\Crefname{table}{表}{表}
+\crefname{equation}{式}{式}
+\Crefname{equation}{式}{式}
+\crefname{section}{节}{节}
+\Crefname{section}{节}{节}
+\crefname{algorithm}{算法}{算法}
+\Crefname{algorithm}{算法}{算法}
+\crefname{appendix}{附录}{附录}
+\Crefname{appendix}{附录}{附录}
+\AtBeginDocument{%
+  \renewcommand{\crefpairconjunction}{ 和 }%
+  \renewcommand{\crefmiddleconjunction}{、}%
+  \renewcommand{\creflastconjunction}{ 和 }%
+}
+
+\SetAlgorithmName{算法}{算法}{算法列表}
+\SetKwInput{KwIn}{输入}
+\SetKwInput{KwOut}{输出}
+
+\title{\bfseries 颜料基混色：sRGB 显示值空间中参考校准的解析混色模型}
+\author{Saikel-Orado-Liu\\[2pt]
+\small \url{https://github.com/GameGeek-Saikel/pigment-based-mixing}}
+\date{2026 年 11 月}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+类颜料介质的颜色混合与 sRGB 显示值空间中的线性插值存在系统差异：互补色混合得到浑浊的中性色而非灰色，深色与白色混合后仍保持色度。Kubelka--Munk（K--M）模型能够复现这些现象，但需要逐颜料光谱数据；若输入为 RGB，还需要数值反解。本文描述颜料基混色（Pigment-Based Mixing，PBM），一个直接作用于 sRGB 显示值的解析模型。PBM 将 K--M/Duncan 结构的混色核心与三层连续混合的修复机制结合：针对深色加白的逐通道幂律目标、针对互补色对的加性谐波修正，以及使模型交换对称的软角色分配。谐波修正对十七个由通道比值与乘积构成的模板特征线性，因此模型中不含三角函数；其系数由固定语料上的线性最小二乘得到，其余标量由同一损失上的坐标下降得到。所有常数拟合自 Mixbox~2.0 的输出——该参考的潜空间训练自实测颜料光谱——因此 PBM 逼近的是参考的行为，而非直接的实测量颜料数据。PBM 为 $O(1)$ 且无查找表，在端点精确返回输入，按构造连续，并在浮点舍入范围内交换对称（实测最大 RGB 差 $6.7\times10^{-16}$）。相对 Mixbox~2.0，PBM 在深色加白套件上的平均 $\Delta E_{00}$ 为 2.26（最大 7.3），在留出随机对上为 2.72--2.85。相对独立的合成光谱世界，各套件平均误差与参考相差至多 0.5 $\Delta E_{00}$，bootstrap 95\% 区间全部重叠。最大误差出现在"大变明度差叠加色相对立"的颜色对上（至多 23.8 $\Delta E_{00}$），此时逐通道独立形式无法表示参考的跨通道关联。本文报告估计协议、消融与敏感性研究、连续性与运行时间测量，并明确说明结论成立与不成立的范围。
+\end{abstract}
+
+\noindent\textbf{关键词：} 颜料混色，Kubelka--Munk，sRGB，CIEDE2000，Mixbox，解析模型。
+
+\input{zh/intro}
+\input{zh/background}
+\input{zh/model}
+\input{zh/estimation}
+\input{zh/evaluation}
+\input{zh/limitations}
+\input{zh/conclusion}
+
+\begin{thebibliography}{99}
+\bibitem{kubelka1931} P.~Kubelka and F.~Munk. Ein Beitrag zur Optik der Farbanstriche. \emph{Zeitschrift f\"ur Technische Physik}, 12:593--601, 1931.
+\bibitem{duncan1940} D.~R. Duncan. The colour of pigment mixtures. \emph{Proceedings of the Physical Society}, 52:390--400, 1940.
+\bibitem{saunderson1942} J.~L. Saunderson. Calculation of the color of pigmented plastics. \emph{Journal of the Optical Society of America}, 32:727--736, 1942.
+\bibitem{pointer1980} M.~R. Pointer. The gamut of real surface colours. \emph{Color Research \& Application}, 5(3):145--155, 1980.
+\bibitem{haase1992} C.~S. Haase and G.~W. Meyer. Modeling pigmented materials for realistic image synthesis. \emph{ACM Transactions on Graphics}, 11(4):305--335, 1992.
+\bibitem{gossett2004} N.~Gossett and B.~Chen. Paint inspired color mixing and compositing for visualization. In \emph{Proceedings of IEEE InfoVis}, pages 113--118, 2004.
+\bibitem{sharma2005} G.~Sharma, W.~Wu, and E.~N. Dalal. The CIEDE2000 color-difference formula: implementation notes, supplementary test data, and mathematical observations. \emph{Color Research \& Application}, 30(1):21--30, 2005.
+\bibitem{lu2014} J.~Lu, S.~DiVerdi, W.~Chen, C.~Barnes, and A.~Finkelstein. RealPigment: paint compositing by example. In \emph{Proceedings of NPAR}, pages 21--30, 2014.
+\bibitem{simonot2014} L.~Simonot and M.~H\'ebert. Between additive and subtractive color mixings: intermediate mixing models. \emph{Journal of the Optical Society of America A}, 31(1):58--66, 2014.
+\bibitem{aharoni2017} E.~Aharoni-Mack, Y.~Shambik, and D.~Lischinski. Pigment-based recolorings of watercolor paintings. In \emph{Proceedings of NPAR}, Article~1, 2017.
+\bibitem{tan2019} J.~Tan, S.~DiVerdi, J.~Lu, and Y.~Gingold. Pigmento: pigment-based image analysis and editing. \emph{IEEE Transactions on Visualization and Computer Graphics}, 25(9), 2019.
+\bibitem{shugrina2020} M.~Shugrina, A.~Kar, S.~Fidler, and K.~Singh. Nonlinear color triads for approximation, learning and direct manipulation of color distributions. \emph{ACM Transactions on Graphics}, 39(4), Article~97, 2020.
+\bibitem{sochorova2021} \v{S}.~Sochorov\'a and O.~Jamri\v{s}ka. Practical pigment mixing for digital painting. \emph{ACM Transactions on Graphics}, 40(6), Article~234, 2021.
+\bibitem{wyszecki2000} G.~Wyszecki and W.~S. Stiles. \emph{Color Science: Concepts and Methods, Quantitative Data and Formulae}. 2nd edition, John Wiley \& Sons, 2000.
+\bibitem{pascale2012} D.~Pascale. The ColorChecker pages: ColorChecker data (averaged spectral measurements of 30 charts). BabelColor, 2012. \url{http://www.babelcolor.com/colorchecker-2.htm}.
+\end{thebibliography}
+
+\input{zh/appendix}
+
+\end{document}

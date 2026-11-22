@@ -161,7 +161,7 @@ def build(out_dir):
                    (r'$R_\infty$: rational approx. in $s=\sqrt{\kappa^*}$', FONT_EQU, C_SUB)],
         'repair': [(r'stage 2: repair layer  $D$', FONT_LABEL, '#4b2e82'),
                    (r'$\lambda$: soft role assignment $\rightarrow (p, u)$', FONT_EQU, C_TEXT),
-                   (r'$g = \sigma_k(w-0.3706)\ \sigma_k(M)\ \sigma_k(\mathrm{maxd}-0.0656)$', FONT_EQU, C_TEXT),
+                   (r'$g = \sigma_k(w-0.3738)\ \sigma_k(M)\ \sigma_k(\mathrm{maxd}-0.0648)$', FONT_EQU, C_TEXT),
                    (r'power-law target:  $T_c = p_c + (u_c-p_c)\,\varphi_{\mathrm{low}}(a)^{q_c}$', FONT_EQU, C_TEXT),
                    (r'harmonic:  $\hat{\gamma}_c(V)\,\mathrm{cSat}\,(1-g)\,4a(1-a)\,h(a)$', FONT_EQU, C_SUB)],
         'output': [(r'$o = \mathrm{clamp}(C + d,\ 0,\ 1)$', FONT_EQU, C_TEXT)],

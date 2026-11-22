@@ -24,15 +24,18 @@ const EVAL_SCRIPT = path.join(__dirname, '..', 'demo', 'color-mixing-evaluation.
  * @param {object} opts
  * @param {string} [opts.mixboxSource] mixbox.js 源码（先在上下文中执行）
  * @param {string} [opts.scriptPath] 自定义页面脚本路径（默认 demo/color-mixing-evaluation.js）
- * @param {object} [opts.patch] 可选：对页面脚本源码做文本替换（消融用）
+ * @param {(src: string) => string} [opts.libPatch] 可选：对算法库
+ *   javascript/color-mixing.js 源码做文本替换（消融/敏感性/连续性变体用）
+ * @param {(src: string) => string} [opts.patch] 可选：对页面脚本源码做文本替换
  * @param {boolean} [opts.exportInternals] 在脚本末尾注入内部函数导出（buildT1..T3、
  *   T5_DEF/T2_DEF 等 const，供 held-out/tail 集构造使用）
  * @returns {{ suite: object, sandbox: object, scripts: string[] }}
  */
 function loadSuite(opts) {
   opts = opts || {};
-  const libSrc = fs.readFileSync(CM_LIB, 'utf8');
+  let libSrc = fs.readFileSync(CM_LIB, 'utf8');
   let pageSrc = fs.readFileSync(opts.scriptPath || EVAL_SCRIPT, 'utf8');
+  if (opts.libPatch) libSrc = opts.libPatch(libSrc);
   if (opts.patch) pageSrc = opts.patch(pageSrc);
   if (opts.exportInternals) {
     pageSrc = pageSrc + '\n' +

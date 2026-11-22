@@ -36,14 +36,16 @@ async function main() {
   const t5Ho = I.buildT5Random(20260812, I.T5_RANDOM_N)
     .map(s => ({ ...s, set: 'T5-heldout', cat: '深色+白·随机(held-out)' }));
   const tail = [];
+  const blind = ['#0D1B44', '#001B75', '#000080', '#001E80', '#080248', '#0A2A6E', '#2A0A5E', '#060538', '#000333'];
   for (const [cat, hb] of I.T5_DEF) for (const a of TAIL_ALPHAS) tail.push({ base: I.HEX2RGB(hb), tint: [1, 1, 1], a });
+  for (const h of blind) for (const a of I.ALPHAS_T5) tail.push({ base: I.HEX2RGB(h), tint: [1, 1, 1], a });
 
   const sets = [
     ['T1 调色板', buildT1()],
     ['T2 压力对', buildT2()],
     ['T3 随机 2000', buildT3(20260808, 2000)],
     ['T5 深色+白', buildT5()],
-    ['tail 尾端', tail],
+    ['tail 尾端 (' + tail.length + ')', tail],
     ['T3-heldout 切片', t3Ho],
     ['T3-seed-09', t3S1],
     ['T3-seed-11', t3S2],

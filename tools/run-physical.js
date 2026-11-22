@@ -73,11 +73,12 @@ function statsOf(de00, nBoot) {
   const sd = Math.sqrt(s.reduce((a, b) => a + (b - mean) * (b - mean), 0) / Math.max(1, n - 1));
   let ciMean = null;
   if (nBoot > 0 && n > 1) {
+    const rnd = mulberry32(20260813);   /* 固定 bootstrap 流，保证 CI 可复现 */
     const bm = new Float64Array(nBoot);
     for (let b = 0; b < nBoot; b++) {
       const boot = new Float64Array(n);
       let sm = 0;
-      for (let i = 0; i < n; i++) { const v = s[(Math.random() * n) | 0]; boot[i] = v; sm += v; }
+      for (let i = 0; i < n; i++) { const v = s[(rnd() * n) | 0]; boot[i] = v; sm += v; }
       bm[b] = sm / n;
     }
     bm.sort();

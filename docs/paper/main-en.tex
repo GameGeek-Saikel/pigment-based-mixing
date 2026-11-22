@@ -1,0 +1,88 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=2.35cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs,multirow,array,tabularx}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{siunitx}
+\usepackage{bm}
+\usepackage[ruled,linesnumbered]{algorithm2e}
+\usepackage[hidelinks]{hyperref}
+\usepackage{cleveref}
+
+\graphicspath{{figures/}}
+\sisetup{detect-all,group-digits=false}
+\captionsetup{font=small,labelfont=bf}
+\setlist{nosep}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.8}
+\renewcommand{\textfraction}{0.07}
+\renewcommand{\floatpagefraction}{0.75}
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{5}
+\newtheorem{proposition}{Proposition}
+
+\DeclareMathOperator{\clamp}{clamp}
+\DeclareMathOperator{\ssf}{ss}
+\newcommand{\cb}{\mathbf{c}_{\mathrm{b}}}
+\newcommand{\ct}{\mathbf{c}_{\mathrm{t}}}
+\newcommand{\vp}{\mathbf{p}}
+\newcommand{\vu}{\mathbf{u}}
+\newcommand{\kbar}{\bar{\kappa}}
+\newcommand{\kstar}{\kappa^{\ast}}
+\newcommand{\Rinf}{R_{\infty}}
+\newcommand{\Mthree}{M_{3}}
+\newcommand{\sigmak}{\sigma_{k}}
+
+\title{\bfseries Pigment-Based Mixing: A Reference-Calibrated Analytic Model\\ for Paint-Like Color Mixing in sRGB Display Space}
+\author{Saikel-Orado-Liu\\[2pt]
+\small \url{https://github.com/GameGeek-Saikel/pigment-based-mixing}}
+\date{November 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Paint-like color mixing differs from linear interpolation in sRGB display space: complementary colors produce muted neutrals rather than gray, and dark colors mixed with white remain chromatic. The Kubelka--Munk (K--M) model reproduces these effects but requires per-pigment spectral data and, for RGB inputs, a numerical inversion. We describe Pigment-Based Mixing (PBM), an analytic model that operates directly on sRGB display values. PBM combines a K--M/Duncan-structured mixing core with a repair layer of three continuously blended mechanisms: a per-channel power-law target for dark-plus-light mixtures, an additive harmonic correction for complementary pairs, and a soft role assignment that renders the model exchange-symmetric. The harmonic correction is linear in a seventeen-feature template built from channel ratios and products, so the model contains no trigonometric function; its coefficients are obtained by linear least squares on a fixed corpus, and the remaining scalars by coordinate descent on the same loss. All constants are fitted to the output of Mixbox~2.0, a published model trained on measured pigment spectra; PBM therefore approximates the reference's behavior rather than measured paint data directly. PBM is $O(1)$ and table-free, returns its inputs exactly at the endpoints, is continuous by construction, and is exchange-symmetric up to floating-point rounding (maximum observed RGB difference $6.7\times10^{-16}$). Against Mixbox~2.0, PBM attains a mean $\Delta E_{00}$ of 2.26 (maximum 7.3) on a dark-plus-white suite and 2.72--2.85 on held-out random pairs. Against an independent synthetic spectral world, its per-suite mean errors differ from the reference's by at most 0.5 $\Delta E_{00}$, and all bootstrap 95\% confidence intervals overlap. The largest errors occur where a large lightness gap meets hue opposition (up to 23.8 $\Delta E_{00}$), where per-channel forms cannot represent the reference's cross-channel correlations. We report the estimation protocol, an ablation and sensitivity study, continuity and runtime measurements, and the limitations of the evaluation, and we state explicitly what the results do and do not establish.
+\end{abstract}
+
+\noindent\textbf{Keywords:} pigment mixing, Kubelka--Munk, sRGB, CIEDE2000, Mixbox, analytic model.
+
+\input{en/intro}
+\input{en/background}
+\input{en/model}
+\input{en/estimation}
+\input{en/evaluation}
+\input{en/limitations}
+\input{en/conclusion}
+
+\begin{thebibliography}{99}
+\bibitem{kubelka1931} P.~Kubelka and F.~Munk. Ein Beitrag zur Optik der Farbanstriche. \emph{Zeitschrift f\"ur Technische Physik}, 12:593--601, 1931.
+\bibitem{duncan1940} D.~R. Duncan. The colour of pigment mixtures. \emph{Proceedings of the Physical Society}, 52:390--400, 1940.
+\bibitem{saunderson1942} J.~L. Saunderson. Calculation of the color of pigmented plastics. \emph{Journal of the Optical Society of America}, 32:727--736, 1942.
+\bibitem{pointer1980} M.~R. Pointer. The gamut of real surface colours. \emph{Color Research \& Application}, 5(3):145--155, 1980.
+\bibitem{haase1992} C.~S. Haase and G.~W. Meyer. Modeling pigmented materials for realistic image synthesis. \emph{ACM Transactions on Graphics}, 11(4):305--335, 1992.
+\bibitem{gossett2004} N.~Gossett and B.~Chen. Paint inspired color mixing and compositing for visualization. In \emph{Proceedings of IEEE InfoVis}, pages 113--118, 2004.
+\bibitem{sharma2005} G.~Sharma, W.~Wu, and E.~N. Dalal. The CIEDE2000 color-difference formula: implementation notes, supplementary test data, and mathematical observations. \emph{Color Research \& Application}, 30(1):21--30, 2005.
+\bibitem{lu2014} J.~Lu, S.~DiVerdi, W.~Chen, C.~Barnes, and A.~Finkelstein. RealPigment: paint compositing by example. In \emph{Proceedings of NPAR}, pages 21--30, 2014.
+\bibitem{simonot2014} L.~Simonot and M.~H\'ebert. Between additive and subtractive color mixings: intermediate mixing models. \emph{Journal of the Optical Society of America A}, 31(1):58--66, 2014.
+\bibitem{aharoni2017} E.~Aharoni-Mack, Y.~Shambik, and D.~Lischinski. Pigment-based recolorings of watercolor paintings. In \emph{Proceedings of NPAR}, Article~1, 2017.
+\bibitem{tan2019} J.~Tan, S.~DiVerdi, J.~Lu, and Y.~Gingold. Pigmento: pigment-based image analysis and editing. \emph{IEEE Transactions on Visualization and Computer Graphics}, 25(9), 2019.
+\bibitem{shugrina2020} M.~Shugrina, A.~Kar, S.~Fidler, and K.~Singh. Nonlinear color triads for approximation, learning and direct manipulation of color distributions. \emph{ACM Transactions on Graphics}, 39(4), Article~97, 2020.
+\bibitem{sochorova2021} \v{S}.~Sochorov\'a and O.~Jamri\v{s}ka. Practical pigment mixing for digital painting. \emph{ACM Transactions on Graphics}, 40(6), Article~234, 2021.
+\bibitem{wyszecki2000} G.~Wyszecki and W.~S. Stiles. \emph{Color Science: Concepts and Methods, Quantitative Data and Formulae}. 2nd edition, John Wiley \& Sons, 2000.
+\bibitem{pascale2012} D.~Pascale. The ColorChecker pages: ColorChecker data (averaged spectral measurements of 30 charts). BabelColor, 2012. \url{http://www.babelcolor.com/colorchecker-2.htm}.
+\end{thebibliography}
+
+\input{en/appendix}
+
+\end{document}

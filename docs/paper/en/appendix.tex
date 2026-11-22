@@ -1,0 +1,223 @@
+\crefalias{section}{appendix}
+\appendix
+
+\section{Evaluation Suite Specification}
+\label{app:suite}
+
+\subsection{Reference and Metric}
+\begin{itemize}
+\item Reference: Mixbox~2.0 \texttt{lerpFloat(base, tint, a)}, loaded from the official distribution; research comparison only, not part of the algorithm.
+\item Only the float path is used (sRGB display values in $[0,1]$), avoiding 8-bit quantization.
+\item Metric: CIEDE2000 with $k_{L}=k_{C}=k_{H}=1$, including the $G$ factor, hue-angle wrap, weighting functions $S_{L},S_{C},S_{H}$, and the rotation term $R_{T}$.
+\item Replication check: the implementation is validated against the 34 reference pairs of Sharma et al.\ the maximum deviation is $4.95\times10^{-5}$.
+\item Confidence intervals: bootstrap 95\% percentile intervals (1000 resamples) with a fixed resampling stream.
+\end{itemize}
+
+\subsection{Test Sets}
+\begin{itemize}
+\item T1: all pairs of the preset palette (10 bases $\times$ 8 tints) at $\alpha\in\{0.25,0.5,0.75\}$ (240 samples).
+\item T2: 19 stress pairs at three ratios (57 samples), listed in \cref{tab:t2}.
+\item T3: uniform random sRGB pairs with uniform $\alpha$, seed 20260808, $n=2000$ (configurable).
+\item T4: 10 colors at $\alpha\in\{0,1\}$ with self-mixing; channel tolerance 0.01.
+\item T5: 20 fixed deep colors and 24 random deep colors, each at $\alpha\in\{0.1,0.2,\dots,0.9\}$ (396 samples).
+\item T5-heldout: 24 random deep colors from seed 20260812 at the same $\alpha$ grid (216 samples).
+\item tail: 20 T5 fixed colors at $\alpha\in\{0.92,0.93,\dots,0.99\}$ (160) and 9 blind-spot colors at the T5 $\alpha$ grid (81).
+\item T5E: 20 T5 fixed colors at deep-side $\alpha$ (120), 12 near-neutral colors at deep-side $\alpha$ (72), and the same 12 at light-side $\alpha$ (48).
+\end{itemize}
+
+\begin{table}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\caption{T2 stress pairs.}
+\label{tab:t2}
+\begin{tabular}{p{0.16\linewidth}p{0.78\linewidth}}
+\toprule
+Category & Pairs \\
+\midrule
+complementary (3) & \#E8321F + \#00D5C0; \#FFD61A + \#2E5EFF; \#E33BA8 + \#00B359 \\
+RYB mismatch (6) & \#E8321F + \#00B359; \#2E5EFF + \#FF7A1A; \#E8321F + \#2E5EFF; \#FFD61A + \#00B359; \#FFD61A + \#00D5C0; \#E33BA8 + \#00D5C0 \\
+white/black (6) & \#E8321F, \#2E5EFF, \#FFD61A, each $\times$ \{\#FFFFFF, \#000000\} \\
+similar (4) & \#E8321F + \#FF7A1A; \#FFD61A + \#FF7A1A; \#2E5EFF + \#8A5BE0; \#00B359 + \#00D5C0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The T5 and T5E Suites}
+\label{app:t5}
+
+\paragraph{T5 fixed colors.}
+\Cref{tab:t5colors} lists the 20 fixed colors: 10 pain-point colors and 10 family extensions. The random deep colors are rejection-sampled until $\max(\mathbf{c})\in[0.30,0.60]$, $\min(\mathbf{c})\le0.08$, and $\max(\mathbf{c})-\min(\mathbf{c})\ge0.25$; T5 uses seed 20260810 and T5-heldout seed 20260812.
+
+\begin{table}[t]
+\centering
+\small
+\caption{T5 fixed deep colors (sRGB hex and display-value floats).}
+\label{tab:t5colors}
+\begin{tabular}{llll}
+\toprule
+Hex & Float RGB & Hex & Float RGB \\
+\midrule
+$\#0D1B44$ & 0.051, 0.106, 0.267 & $\#0A2A6E$ & 0.039, 0.165, 0.431 \\
+$\#000080$ & 0.000, 0.000, 0.502 & $\#8E1F0A$ & 0.557, 0.122, 0.039 \\
+$\#001B75$ & 0.000, 0.106, 0.459 & $\#005A32$ & 0.000, 0.353, 0.196 \\
+$\#001E80$ & 0.000, 0.118, 0.502 & $\#00552B$ & 0.000, 0.333, 0.169 \\
+$\#080248$ & 0.031, 0.008, 0.282 & $\#00585E$ & 0.000, 0.345, 0.369 \\
+$\#5F1708$ & 0.373, 0.090, 0.031 & $\#2A0A5E$ & 0.165, 0.039, 0.369 \\
+$\#5E0F1A$ & 0.369, 0.059, 0.102 & $\#4A0B6E$ & 0.290, 0.043, 0.431 \\
+$\#4A3A05$ & 0.290, 0.227, 0.020 & $\#6E0B4A$ & 0.431, 0.043, 0.290 \\
+$\#280501$ & 0.157, 0.020, 0.004 & $\#7A3B00$ & 0.478, 0.231, 0.000 \\
+$\#250903$ & 0.145, 0.035, 0.012 & $\#6E4A00$ & 0.431, 0.290, 0.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{T5E.}
+Deep-side $\alpha$ levels are 0.001, 0.005, 0.01, 0.02, 0.05, and 0.1; light-side levels are 0.92, 0.95, 0.98, and 0.99. The near-neutral group is \#000B2E, \#06052E, \#1A0F22, and \#0A1A18, plus 8 random colors from seed 20260816, rejection-sampled with $\max\in[0.04,0.10]$ and chroma range $\in[0.02,0.06]$.
+
+\paragraph{Tail blind-spot colors.}
+$\#0D1B44$, $\#001B75$, $\#000080$, $\#001E80$, $\#080248$, $\#0A2A6E$, $\#2A0A5E$, $\#060538$, $\#000333$.
+
+\subsection{Split and Statistics}
+\begin{itemize}
+\item Fitting draw: T1, T2, T5, T5E, tail, the first 800 pairs of T3 (seed 20260808), 6000 pseudo-random pairs (seed 999), and 12 anchored complementary pairs at 19 ratios each.
+\item Held-out: T3 pairs 800--1999 of the same draw, T3 draws with seeds 20260809 and 20260811, and T5-heldout (seed 20260812).
+\item For each model and set we report mean, maximum, median, 95th percentile, standard deviation, and (for random sets) a bootstrap 95\% interval on the mean.
+\item Reported figures are generated from the reference implementation by the repository tooling; the seed of every draw is stated in the caption or in this appendix.
+\end{itemize}
+
+\section{Harmonic Correction Coefficients}
+\label{app:coeff}
+
+The 51 coefficients of \cref{eq:gamma} are listed below in feature order (\cref{tab:features}: intercept, \texttt{lum}, \texttt{dgug}, \texttt{dcmucm}, \texttt{wUcP}, \texttt{u2}, \texttt{pm}, \texttt{dg}, \texttt{op}, \texttt{span}, \texttt{drur}, \texttt{pn}, \texttt{Mmn}, \texttt{lumU}, \texttt{ur}, \texttt{dcAbs}, \texttt{gRu}); the intercept is first.
+
+\paragraph{R channel (17 coefficients).}
+$-0.24945965$, $-0.00458899$, $0.00415136$, $-0.03758060$, $0.05450570$, $0.09989345$, $0.25226195$, $0.02321094$, $0.15029394$, $0.03230901$, $0.03005819$, $0.34621807$, $-0.57046216$, $-0.00274566$, $0.03208997$, $-0.05313629$, $-0.02941071$.
+
+\paragraph{G channel (17 coefficients).}
+$-0.15650537$, $0.14061150$, $-0.03620353$, $0.03735064$, $0.02174583$, $0.02381613$, $-0.06481304$, $-0.02027288$, $0.13851721$, $0.13327492$, $0.01269829$, $0.03768178$, $-0.05558582$, $0.03768944$, $0.01505410$, $0.02180116$, $-0.01767582$.
+
+\paragraph{B channel (17 coefficients).}
+$0.16757082$, $-0.04373748$, $0.02221282$, $-0.02131140$, $-0.08893948$, $0.05973609$, $-0.09324463$, $-0.00242072$, $-0.11889782$, $-0.08066689$, $-0.01881345$, $-0.40457567$, $0.51586855$, $-0.01855359$, $0.03390971$, $-0.01807147$, $-0.04148750$.
+
+\section{Synthetic Spectral Dataset}
+\label{app:synthetic}
+
+\subsection{Dataset}
+The model is two-constant K--M with separate absorption and scattering per pigment on a 10 nm grid over 380--750 nm (38 samples):
+\begin{equation}
+K(\lambda)=\kappa_{\mathrm{base}}+\sum_{i}A_{i}e^{-((\lambda-\mu_{i})/\sigma_{i})^{2}}+\sum_{j}\frac{B_{j}}{1+e^{\pm((\lambda-\lambda_{j})/w_{j})}},
+\qquad S(\lambda)=S_{\mathrm{base}}.
+\end{equation}
+Every parameter is a fixed constant; the dataset is reproduced deterministically by the tooling. Band positions follow first-principles pigment chemistry: yellow, orange, red, and earth families carry steep logistic absorption edges in the blue--green region ($\lambda_{0}\approx490$--$585$ nm), blue and green carry red-side rising edges ($\approx610$--$660$ nm), magenta and purple carry Gaussian bands in the green region ($\approx550$--$580$ nm), and transition-metal or organic pigments add characteristic bands ($\approx430$--$660$ nm). Amplitudes, widths, bases, and scattering are calibrated to the BabelColor X-Rite ColorChecker Classic Avg30 spectra \cite{pascale2012} by coordinate descent (fit $\Delta E_{00}\le1.2$, most patches $\le0.2$). The patches are formulated color-card spectra rather than pure-pigment masstone spectra; the K--M equations are closed for any reflectance spectrum, and the chart is designed for RGB displays, so no display calibration is required.
+
+The dataset contains 29 pigments: 24 functional hues (white, black, buff, gray light/mid/dark, gray blue, two yellows, two oranges, two reds, two magentas, purple, three blues, cyan, two greens, two earths) and 5 deep derivations (deep blue, red, green, magenta, purple) for the P5 suites. No third-party measurement data are contained in the repository; the numerical parameters are fitted offline to the documented public source and the fitted values are published.
+
+\subsection{Forward Pipeline and Validation}
+The forward pipeline applies separate Duncan superposition $K=(1-\alpha)K_{A}+\alpha K_{B}$ and $S=(1-\alpha)S_{A}+\alpha S_{B}$, evaluates $\kappa=K/S$ and \cref{eq:km}, integrates against D65 and the CIE 1931 $2^{\circ}$ observer on the 10 nm grid (trapezoidal rule, normalized to $Y=100$), and converts to IEC 61966-2-1 sRGB with clamping and out-of-gamut flagging.
+
+The dataset is self-checked by the tooling: all 29 pigments satisfy $\Rinf\in(0,1)$ and $K\ge0$, $S>0$; unmix reconstruction of the pure primaries has $\Delta E_{00}=0.000$; spectral mixing is identity at $\alpha=0,1$; yellow $\times$ blue renders green ($h^{\circ}\in(110,190)$); magenta $\times$ green and red $\times$ cyan render muted colors ($C^{\ast}<30$ and $<40$); deep $+$ white preserves hue ($|\Delta h|<40^{\circ}$ over $\alpha=0.25$--$0.75$); and every pigment renders inside its family hue window. Saturated pure pigments can legitimately exceed the sRGB gamut; such samples are flagged and clamped before model input (P1: 6/828; P3: 35/2000; P5: 0/135).
+
+\subsection{Suites}
+\begin{itemize}
+\item P1: all $\binom{24}{2}$ pairs of the 24-hue palette at $\alpha\in\{0.25,0.5,0.75\}$ (828 samples).
+\item P2: nine complementary/stress pairs at the same ratios (27 samples).
+\item P3: 2000 random pigment pairs with uniform $\alpha$, seed 20260813.
+\item P5: 15 deep pigments $\times$ white at $\alpha\in\{0.1,\dots,0.9\}$ (135 samples).
+\item P5-buff: the same deep set $\times$ buff at the same grid (135 samples).
+\item P5E: the deep set $\times$ white at $\alpha\in\{0.001,0.005,0.01,0.02,0.05,0.1,0.92,0.95,0.98,0.99\}$ (150 samples).
+\end{itemize}
+
+\section{Inversion Measurements}
+\label{app:inversion}
+
+All numbers in this appendix were measured on the Mixbox~2.0 reference (float path).
+
+\subsection{Inverted Power Exponent}
+For anchored colors, the exponent is inverted per channel as in \cref{eq:inversion}. \Cref{tab:d1} reports the inverted exponent over $\alpha\in\{0.1,\dots,0.9\}$ for the absorption band of synthetic anchored colors (inverting the maximal channel). The drift is below 0.2 in every family; the breakdown at $\alpha\to1$ is the region addressed by the $\varphi$ map.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Inverted exponent $p$ over $\alpha$ for the absorption band (measured).}
+\label{tab:d1}
+\begin{tabular}{lccccc}
+\toprule
+Family & $\alpha=0.1$ & $\alpha=0.3$ & $\alpha=0.5$ & $\alpha=0.7$ & $\alpha=0.9$ \\
+\midrule
+$B$ & 0.97 & 0.97 & 0.98 & 1.00 & 1.03 \\
+$R$ & 0.98 & 1.00 & 1.04 & 1.09 & 1.16 \\
+$G$ & 1.00 & 1.03 & 1.07 & 1.12 & 1.18 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\Cref{tab:d2} is an excerpt of the anchor inversion table at $\alpha=0.5$, where $s$ is the position of the channel along the chroma direction. For the synthetic color $(0.01,v,0.01)$, the $s=1$ channel (G maximal) gives $v=0.05\rightarrow1.07$, $0.12\rightarrow1.06$, $0.25\rightarrow0.81$, $0.35\rightarrow0.58$, $0.55\rightarrow0.42$; the fast bright-end regime applies only for $v>0.25$.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Anchor inversion table (excerpt, $\alpha=0.5$).}
+\label{tab:d2}
+\begin{tabular}{lccccc}
+\toprule
+Color & Ch & $v$ & $s$ & $p$ \\
+\midrule
+$\#0D1B44$ & R & 0.051 & 0.00 & 2.05 \\
+$\#0D1B44$ & G & 0.106 & 0.26 & 0.84 \\
+$\#0D1B44$ & B & 0.267 & 1.00 & 0.23 \\
+$\#080248$ & R & 0.031 & 0.09 & 2.25 \\
+$\#080248$ & B & 0.282 & 1.00 & 0.12 \\
+$\#4A0B6E$ & B & 0.431 & 1.00 & 0.85 \\
+$\#6E0B4A$ & G & 0.043 & 0.00 & 1.59 \\
+$\#5F1708$ & R & 0.373 & 1.00 & 0.76 \\
+$\#5F1708$ & G & 0.090 & 0.17 & 1.77 \\
+$\#5F1708$ & B & 0.031 & 0.00 & 0.90 \\
+$\#8E1F0A$ & R & 0.557 & 1.00 & 0.62 \\
+$\#005A32$ & G & 0.353 & 1.00 & 0.57 \\
+$\#005A32$ & B & 0.196 & 0.56 & 1.04 \\
+$\#6E0B4A$ & B & 0.290 & 0.64 & 0.91 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Residuals and Coupling}
+For $v=0$ channels, the reference curves are independent of the pigment and depend only on the channel (for example, both R and G of $\#000080$ are zero but their reference curves differ), which motivates the residual term. The residuals measured during fitting were approximately 1.85 (R), 1.0 (G), and 1.1 (B), and were fine-tuned with decay in the channel value.
+
+The coupling term is measured by fixing $B=0.431$ and $G=0.043$ and sweeping $R$ at $\alpha=0.5$ (\cref{tab:d3}). The relation is a monotone S-shape: the purple $\#4A0B6E$ ($R=0.29$) has $p_{B}=0.85$, whereas pure blue ($R\approx0$) has $p_{B}=0.12$--$0.17$. The coupling is symmetric: high $B$ slows $R$ ($p_{R}$ rises from 1.04 to 2.02 as $B$ goes from 0 to 0.431).
+
+\begin{table}[t]
+\centering
+\small
+\caption{Channel coupling: inverted $p_{B}$ as a function of $R$ (measured).}
+\label{tab:d3}
+\begin{tabular}{lccccccc}
+\toprule
+$R$ & 0.03 & 0.06 & 0.10 & 0.15 & 0.20 & 0.25 & 0.30 \\
+$p_{B}$ & 0.17 & 0.21 & 0.35 & 0.60 & 0.73 & 0.80 & 0.85 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Directional Responses}
+Inverting the T5 red-dominant fixed colors per $\alpha$ preserves $\alpha$-constancy ($\sigma<0.1$); \cref{tab:d4} reports the per-channel need. Three structural signals appear: red-family G holding ($\#5E0F1A$ and $\#8E1F0A$ need $G\approx1.7$--$1.8$), yellow-brown B holding ($\#906D00$ needs $B\approx1.5$), and red transmission (the R need is 0.62--0.77). A least-squares fit over the inversion residuals of 11 red-dominant fixed colors, with the same linear form $\delta_{c}=a+k\,v$ for all three channels, yields the unified responses of \cref{eq:deltas}. The range gate $g_{R}\sigma_{8}(v_{R}-\mathrm{RTH})$ with $\mathrm{RTH}=0.21929798$ is necessary because the directional coefficients change sign below it.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Red-family inversion: per-channel exponent need (measured).}
+\label{tab:d4}
+\begin{tabular}{lccc}
+\toprule
+Color & R need & G need & B need \\
+\midrule
+$\#5E0F1A$ deep red & 0.77 & 1.78 & 0.89 \\
+$\#8E1F0A$ deep red & 0.62 & 1.71 & 0.88 \\
+$\#906D00$ ochre & 0.72 & 0.95 & 1.49 \\
+$\#940C7C$ magenta & 0.99 & 1.31 & 0.98 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Complementary Families}
+Inverting the reference on complementary pairs reveals a family-structured residual: for each hue-opposition family the error concentrates in the middle of the mixing range with the shape $4a(1-a)$, and its amplitude is a smooth function of the two input colors. For example, the bright-yellow $\times$ deep-blue family has a G-channel error near zero, a B-channel error at most 0.05, and an R-channel error following $4a(1-a)$ with amplitude 0.28--0.29 for $\alpha\in[0.4,0.9]$. Because the reference's latent space is non-linear, the amplitudes vary smoothly across families and a single amplitude per family is insufficient; the harmonic correction is therefore a linear model over the seventeen-feature template, fitted on a corpus of complementary-family measurements (weighted by a factor of 10), with 17 coefficients per channel. The endpoint suppression $h(a)$ and the chroma attenuation $\mathrm{cSat}$ are structural rather than fitted.

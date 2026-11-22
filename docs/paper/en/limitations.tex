@@ -1,0 +1,22 @@
+\section{Limitations and Future Work}
+\label{sec:limitations}
+
+\paragraph{Nature of the residual error.}
+The largest T5 residual (near-black purple, $\Delta E_{00}\approx5.8$) and the largest main-suite residuals (lightness-gap and hue-opposition pairs, 10.7--23.8) share an origin: the reference expresses its gamut on a four-pigment basis, and the high-order cross-channel correlations of red-family and violet pigments are properties of that latent representation, not of per-channel independent forms. PBM approaches the latent behavior along four dimensions---the K--M core, the power-law exponents, the harmonic correction, and the $\varphi$ map---but the remaining errors dominate the maximum statistics.
+
+\paragraph{Near-neutral deep blind zone.}
+Near-neutral deep colors ($\mathrm{maxd}\in[0.02,0.06]$) fall below the gate and are mixed by the core alone. The power-law staircase was fitted on chromatic deep colors, whose channel structure differs from the approximately uniform exponent needed for grayish deep colors. The residual measures a maximum of 9.5 $\Delta E_{00}$ on the light side and a mean of 2.441 over T5E. This is inside the design targets but is the largest maximum among the dark-plus-white design-target suites (T5, T5E, and tail). The $\varphi$ map reduced but did not eliminate it.
+
+\paragraph{Relation to Mixbox.}
+Mixbox applies linear latent mixing followed by a polynomial latent mapping and was trained on measured pigment spectra. PBM applies an analytic K--M structure and an analytic repair layer fitted to the reference's output. Because the reference's latent space is trained on measured pigment data, PBM inherits part of the reference's physical plausibility transitively; its error against real paint is bounded by the reference's own error plus PBM's measured deviation from the reference. That deviation is the price of a fully analytic model that can be implemented without trained tables or license restrictions.
+
+\paragraph{Remaining limitations.}
+\begin{enumerate}
+\item The per-channel independent structure cannot represent the reference's high-order cross-channel correlations; this is the source of the largest errors.
+\item The constants are fitted to Mixbox~2.0. If the reference changes, the constants must be re-estimated with the procedure of \cref{sec:estimation}; they do not transfer to a different reference.
+\item The linear directional response cannot reconcile magenta and deep red under one univariate form. The magenta members of T5 measure means of 1.91--1.99 and maxima of 2.19--2.86, with the near-black purple $\#2A0A5E$ at a mean of 3.93 and a maximum of 5.82, and the dark violet $\#080248$ at 5.14 / 7.33.
+\item The harmonic correction is linear over a hand-designed feature template. Its residual is largest for pairs whose reference trajectories are non-monotone in the mixing ratio. A non-linear but still analytic correction, and additional latent channels on the model side, are left for future work.
+\item The synthetic-spectra validation confirms model parity and qualitative family behavior against an independent two-constant K--M world. A measured counterpart would require an authorized release of measured paint spectra.
+\end{enumerate}
+
+Future work includes extending the feature structure beyond the current template, re-fitting the staircase for the near-neutral blind zone, adding residual (non-spectral) latent channels to the core, generalizing the model to layered compositing, and re-fitting against physical paint measurements when such data are available.

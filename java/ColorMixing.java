@@ -14,7 +14,7 @@
  *   - 幂律目标展开（无 pre 对象、无逐通道内部类；q 表达式直接展开）
  *   - K/S 叠加 kc 外提为带参静态方法（去闭包开销）
  *   - γ 谐波零贡献提前退出（cSat/hA/gSup 门）
- *   - 倍角公式降三角次数（8→4）；通道极值/色相 hueOf 手写展开
+ *   - γ 谐波改用无三角比值特征（消去 4 次三角函数与 1 次 log）；resE 改二次包络（C1）
  *
  * 用法（库）：
  *     double[] out = ColorMixing.mixPbm(
@@ -29,9 +29,9 @@ public class ColorMixing {
     static final double[] PBM_M = { 0.74523981, 0.30403013, -0.04926994, 0.0, 0.74093256, 0.25906744, 0.0, 0.0, 1.0 };
     static final double[] PBM_BETA = { -0.69372345, -0.48397409, -0.24977842 };
     static final double PBM_EPS = 0.00157634;
-    static final double[] PBM_PW_RES = { 0.0, -0.25693718, -0.25693718 };
-    static final double PBM_PW_CPL = 0.43251363;
-    static final double PBM_PW_KC = 4.86795929;
+    static final double[] PBM_PW_RES = { 0.0, -0.24164942, -0.24164942 };
+    static final double PBM_PW_CPL = 0.42818849;
+    static final double PBM_PW_KC = 4.13539205;
     static final double[] PBM_PW_RD = { -0.28030789, -0.31011215, 0.33194666, -1.19791733, -0.45218018, 1.71390058 };
     static final double PBM_PW_RTH = 0.21929798;
     static final double PBM_PW_BD_R = 0.40713961;
@@ -39,7 +39,7 @@ public class ColorMixing {
     static final double[] PBM_PW_GD_R = { -0.2367074, 0.72220875 };
     static final double[] PBM_PW_GD_B = { -0.30067864, 1.03098891 };
     static final double PBM_EW = 0.08;
-    static final double PBM_PHI_P = 2.31336;
+    static final double PBM_PHI_P = 1.96522814;
     static final double PBM_PHI_W = PBM_EW;
 
     static final double[] PBM_MI = mat3Inv(PBM_M);
@@ -66,7 +66,7 @@ public class ColorMixing {
     }
 
     static double ck(double x) {
-        double t = x * 12.584001;
+        double t = x * 11.01639450;
         return t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
     }
 
@@ -101,10 +101,8 @@ public class ColorMixing {
     }
 
     static double resE(double v) {
-        double t = v * 25.0;
-        if (t < 1.0) return 0.9432 - 0.6219 * t;
-        if (t < 3.0) return 0.4580 - 0.1494 * t;
-        return 0.0;
+        double u = 1.0 - v / 0.14196781;
+        return u > 0.0 ? 0.83421324 * u * u : 0.0;
     }
 
     /** K–M 混色核心（论文 §3.3）。入参/出参均为 sRGB 浮点 [0,1]。 */
@@ -156,24 +154,24 @@ public class ColorMixing {
 
         double resE0 = resE(g), resE2 = resE(b);
 
-        double s1R = ck(r - 0.04633146), s2R = ck(r - 0.24928142);
-        double pBvR = 0.88024633 + (0.33545176 - 0.88024633) * s1R + (0.19217412 - 0.33545176) * s2R;
-        double pGvR = 0.57387051 + (0.596528 - 0.57387051) * s1R + (0.19217412 - 0.596528) * s2R;
+        double s1R = ck(r - 0.04350222), s2R = ck(r - 0.26436295);
+        double pBvR = 0.91483121 + (0.32538955 - 0.91483121) * s1R + (0.18785981 - 0.32538955) * s2R;
+        double pGvR = 0.57387051 + (0.596528 - 0.57387051) * s1R + (0.18785981 - 0.596528) * s2R;
         double q0 = gSum <= 1e-6 ? (1.0 + pBvR + pGvR) / 3.0 : (gB * pBvR + gG * pGvR + gR) * gInv;
         q0 += PBM_PW_CPL * c01(Math.max(g, b) * PBM_PW_KC);
         q0 += gRed * (PBM_PW_RD[0] + PBM_PW_RD[1] * r) + gB * PBM_PW_BD_R + gG * (PBM_PW_GD_R[0] + PBM_PW_GD_R[1] * r);
 
-        double s1G = ck(g - 0.04633146), s2G = ck(g - 0.24928142);
-        double pBvG = 0.88024633 + (0.33545176 - 0.88024633) * s1G + (0.19217412 - 0.33545176) * s2G;
-        double pGvG = 0.57387051 + (0.596528 - 0.57387051) * s1G + (0.19217412 - 0.596528) * s2G;
+        double s1G = ck(g - 0.04350222), s2G = ck(g - 0.26436295);
+        double pBvG = 0.91483121 + (0.32538955 - 0.91483121) * s1G + (0.18785981 - 0.32538955) * s2G;
+        double pGvG = 0.57387051 + (0.596528 - 0.57387051) * s1G + (0.18785981 - 0.596528) * s2G;
         double q1 = gSum <= 1e-6 ? (1.0 + pBvG + pGvG) / 3.0 : (gB * pBvG + gG * pGvG + gR) * gInv;
         q1 += PBM_PW_RES[1] * resE0;
         q1 += PBM_PW_CPL * c01(Math.max(r, b) * PBM_PW_KC);
         q1 += gRed * (PBM_PW_RD[2] + PBM_PW_RD[3] * g) + gB * (PBM_PW_BD_G[0] + PBM_PW_BD_G[1] * g);
 
-        double s1B = ck(b - 0.04633146), s2B = ck(b - 0.24928142);
-        double pBvB = 0.88024633 + (0.33545176 - 0.88024633) * s1B + (0.19217412 - 0.33545176) * s2B;
-        double pGvB = 0.57387051 + (0.596528 - 0.57387051) * s1B + (0.19217412 - 0.596528) * s2B;
+        double s1B = ck(b - 0.04350222), s2B = ck(b - 0.26436295);
+        double pBvB = 0.91483121 + (0.32538955 - 0.91483121) * s1B + (0.18785981 - 0.32538955) * s2B;
+        double pGvB = 0.57387051 + (0.596528 - 0.57387051) * s1B + (0.18785981 - 0.596528) * s2B;
         double q2 = gSum <= 1e-6 ? (1.0 + pBvB + pGvB) / 3.0 : (gB * pBvB + gG * pGvB + gR) * gInv;
         q2 += PBM_PW_RES[2] * resE2;
         q2 += PBM_PW_CPL * c01(Math.max(r, g) * PBM_PW_KC);
@@ -194,7 +192,7 @@ public class ColorMixing {
         double maxd = M - mn;
         double wu = u0 < u1 ? (u0 < u2 ? u0 : u2) : (u1 < u2 ? u1 : u2);
         double w = mn > wu ? mn : wu;
-        double gate = ck(w - 0.3706311) * ck(M) * ck(maxd - 0.06556298);
+        double gate = ck(w - 0.37375181) * ck(M) * ck(maxd - 0.06479933);
         double d0 = 0.0, d1 = 0.0, d2 = 0.0;
         if (gate > 1e-6) {
             double[] t = pbmPwTarget(pig, u, aEff);
@@ -208,37 +206,25 @@ public class ColorMixing {
         double cSat = ssT(M - mn, 0.02, 0.15) * ssT(um - wu, 0.08, 0.30);
         if (gSup > 1e-9 && hA > 1e-9 && cSat > 1e-9) {
             double gm = 4.0 * aEff * (1.0 - aEff) * cSat * gSup * hA;
-            double hp = hueOf(r, g, b), hu = hueOf(u0, u1, u2);
-            double A = Math.PI / 180.0;
-            double shp = Math.sin(A * hp), chp = Math.cos(A * hp);
-            double shu = Math.sin(A * hu), chu = Math.cos(A * hu);
-            double s2hp = 2.0 * shp * chp, c2hp = 2.0 * chp * chp - 1.0;
-            double s3hp = shp * (3.0 - 4.0 * shp * shp), c3hp = chp * (4.0 * chp * chp - 3.0);
-            double s2hu = 2.0 * shu * chu, c2hu = 2.0 * chu * chu - 1.0;
-            double logu = Math.log(u0 + 0.01);
-            double s1hu_pm = shu * c01((M - 0.30) * 12.584);
             double gRp = 0.5 * c8(r - g) + 0.5 * c8(r - b);
             double gBp = 0.5 * c8(b - r) + 0.5 * c8(b - g);
             double gRu = 0.5 * c8(u0 - u1) + 0.5 * c8(u0 - u2);
+            double PC = Math.max(M - mn, 1e-6), UC = Math.max(um - wu, 1e-6);
+            double DR = (r - b) / PC, DG = (g - b) / PC, DCM = (r - g) / PC;
+            double UR = (u0 - u2) / UC, UG = (u1 - u2) / UC, UCM = (u0 - u1) / UC;
             double wUcP = (u0 - u2) * (b - r);
             double dcAbs = u0 > r ? u0 - r : r - u0;
-            d0 += (-0.07339164 + -0.085953 * gBp + 0.1295769 * wu + -0.04714988 * s2hp + 0.12208017 * M + -0.00677685 * logu + -0.03406281 * shu + 0.01174257 * s3hp + 0.02505266 * s1hu_pm + 0.0360914 * gRp + -0.04872395 * r) * gm;
-            d1 += (-0.04704706 + 0.10921572 * wu + -0.06204143 * gRp + -0.02021518 * c2hp + 0.05506322 * um + 0.00698984 * s2hu) * gm;
-            d2 += (-0.04887766 + 0.09651812 * wu + -0.07000325 * mn + 0.02119207 * c3hp + 0.08138486 * um + -0.06336064 * M + 0.01773538 * c2hu + -0.09771287 * wUcP + 0.0736705 * dcAbs + -0.03704948 * gRu) * gm;
+            double LUM = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            double LUMU = 0.2126 * u0 + 0.7152 * u1 + 0.0722 * u2;
+            double SPAN = (M - mn) * (um - wu);
+            double OP = 1 - ((M - mn) + (um - wu)) / 2;
+            d0 += (- 0.24945965002914949 * 1 - 0.0045889906868631708 * LUM + 0.0041513551994266139 * (DG * UG) - 0.037580595706759645 * (DCM * UCM) + 0.05450569803891276 * wUcP + 0.099893445837378303 * u2 + 0.25226194627256282 * M + 0.023210943937834599 * DG + 0.15029393775777919 * OP + 0.032309012528158876 * SPAN + 0.030058192159529883 * (DR * UR) + 0.34621806773454422 * mn - 0.57046215673962131 * (M * mn) - 0.0027456565141784021 * LUMU + 0.032089971951832885 * UR - 0.053136286490094019 * dcAbs - 0.029410711164283156 * gRu) * gm;
+            d1 += (- 0.15650536547935953 * 1 + 0.14061150179766091 * LUM - 0.036203528266390395 * (DG * UG) + 0.037350636144765727 * (DCM * UCM) + 0.021745829109720165 * wUcP + 0.023816133495222817 * u2 - 0.064813043910525822 * M - 0.020272883681938206 * DG + 0.1385172056042358 * OP + 0.13327491711885181 * SPAN + 0.012698288999900342 * (DR * UR) + 0.037681776121840031 * mn - 0.055585822793579612 * (M * mn) + 0.037689443255939002 * LUMU + 0.015054100789579432 * UR + 0.021801163240957828 * dcAbs - 0.017675820505782546 * gRu) * gm;
+            d2 += (+ 0.16757082268978754 * 1 - 0.043737477412635554 * LUM + 0.02221282183541292 * (DG * UG) - 0.02131140334204034 * (DCM * UCM) - 0.088939482811690521 * wUcP + 0.059736090003303446 * u2 - 0.093244625666860398 * M - 0.0024207237712253484 * DG - 0.118897820628014 * OP - 0.0806668864815685 * SPAN - 0.018813447483138224 * (DR * UR) - 0.40457566738392031 * mn + 0.51586854870254917 * (M * mn) - 0.018553588391455163 * LUMU + 0.033909706606359974 * UR - 0.018071468054222248 * dcAbs - 0.041487499442177063 * gRu) * gm;
         }
         return new double[]{ d0, d1, d2 };
     }
-
-    static double hueOf(double v0, double v1, double v2) {
-        double mx = v0 > v1 ? (v0 > v2 ? v0 : v2) : (v1 > v2 ? v1 : v2);
-        double mnn = v0 < v1 ? (v0 < v2 ? v0 : v2) : (v1 < v2 ? v1 : v2);
-        if (mx - mnn < 1e-9) return 0.0;
-        double h;
-        if (mx == v0) h = 60.0 * ((v1 - v2) / (mx - mnn));
-        else if (mx == v1) h = 60.0 * (2.0 + (v2 - v0) / (mx - mnn));
-        else h = 60.0 * (4.0 + (v0 - v1) / (mx - mnn));
-        return h < 0.0 ? h + 360.0 : h;
-    }
+    /* 修复层（论文 §3.4）：γ 谐波改用无三角比值特征 */
 
     static double[] pbmRepairLayer(double[] base, double[] tint, double a, double[] C) {
         double mB = Math.max(base[0], Math.max(base[1], base[2]));

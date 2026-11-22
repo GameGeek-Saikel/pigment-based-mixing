@@ -45,6 +45,17 @@ function buildTail(I) {
   return out;
 }
 
+function mulberry32(seed) {
+  let t = seed >>> 0;
+  return function () {
+    t += 0x6D2B79F5;
+    let x = t;
+    x = Math.imul(x ^ (x >>> 15), 1 | x);
+    x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function statsOf(de00, nBoot) {
   const s = de00.slice().sort((x, y) => x - y);
   const n = s.length;
@@ -55,10 +66,11 @@ function statsOf(de00, nBoot) {
   const sd = Math.sqrt(s.reduce((a, b) => a + (b - mean) * (b - mean), 0) / Math.max(1, n - 1));
   let ciMean = null, ciP95 = null;
   if (nBoot > 0 && n > 1) {
+    const rnd = mulberry32(20260808);   /* 固定 bootstrap 流，保证 CI 可复现 */
     const bm = new Float64Array(nBoot), bp = new Float64Array(nBoot);
     for (let b = 0; b < nBoot; b++) {
       const boot = new Float64Array(n);
-      for (let i = 0; i < n; i++) boot[i] = s[(Math.random() * n) | 0];
+      for (let i = 0; i < n; i++) boot[i] = s[(rnd() * n) | 0];
       boot.sort();
       let sm = 0;
       for (let i = 0; i < n; i++) sm += boot[i];

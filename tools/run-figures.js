@@ -19,7 +19,7 @@ const { loadSuite } = require('./suite-loader');
 const { fetchMixbox } = require('./mixbox-fetch');
 const spectral = require('./spectral/pipeline');
 
-const OUT = path.join(__dirname, '..', '..', 'docs', 'assets');
+const OUT = path.join(__dirname, '..', 'docs', 'assets');
 const F = (w, h, inner) =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="Helvetica, Arial, sans-serif"><rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"/>${inner}</svg>`;
 const rgb = c => `rgb(${Math.round(Math.max(0, Math.min(1, c[0])) * 255)},${Math.round(Math.max(0, Math.min(1, c[1])) * 255)},${Math.round(Math.max(0, Math.min(1, c[2])) * 255)})`;
@@ -35,7 +35,6 @@ function collectCtx(suite, sandbox) {
     PBM: suite.MODELS[0],
     RGB: suite.MODELS[1],
     KM: suite.MODELS[2],
-    ART: suite.MODELS[3],
     de00: (a, b) => suite.deltaE2000(I.rgbToLab(a), I.rgbToLab(b)),
   };
 }

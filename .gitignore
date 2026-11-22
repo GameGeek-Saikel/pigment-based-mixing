@@ -6,4 +6,5 @@
 *.pyc
 __pycache__/
 tools/.build/
+docs/paper/build/
 node_modules/
